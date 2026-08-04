@@ -1,0 +1,8 @@
+.build/
+.local/
+InterviewFlashcard.xcodeproj/
+*.xcuserstate
+xcuserdata/
+diagnostics/mac-ui/
+.DS_Store
+.codebase-memory/
