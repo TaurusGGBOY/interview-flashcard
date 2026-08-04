@@ -24,6 +24,7 @@ struct AnswerEditorView: View {
     @State private var isProcessing = false
     @State private var errorMessage: String?
     @State private var submittedAttemptID: UUID?
+    @State private var processingResult: EvaluationRecord?
 
     init(questionID: UUID) {
         self.questionID = questionID
@@ -97,6 +98,29 @@ struct AnswerEditorView: View {
                     }
                 }
             }
+
+            if let processingResult {
+                Section("本次评分") {
+                    if let total = processingResult.totalScore {
+                        LabeledContent("总分", value: "\(total) / 100")
+                            .accessibilityIdentifier(AnswerEditorAccessibilityID.result)
+                    } else {
+                        Text("回答内容不足，暂不可评分。")
+                            .accessibilityIdentifier(AnswerEditorAccessibilityID.result)
+                    }
+                    ForEach(ScoreDimension.allCases, id: \.self) { dimension in
+                        LabeledContent(dimension.displayName, value: "\(processingResult.dimensionScores[dimension])")
+                    }
+                    if let card, let reference = card.referenceAnswers.max(by: { $0.version < $1.version }) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("满分答案（v\(reference.version)）")
+                                .font(.headline)
+                            Text(reference.answerText)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+            }
         }
         .navigationTitle("回答")
         .accessibilityIdentifier(AnswerEditorAccessibilityID.screen)
@@ -111,6 +135,7 @@ struct AnswerEditorView: View {
                         diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
                     ),
                     onSubmitted: { attempt in
+                        processingResult = nil
                         submittedAttemptID = attempt.id
                         process(attemptID: attempt.id)
                     }
@@ -131,6 +156,7 @@ struct AnswerEditorView: View {
     private func submitText() {
         guard let card else { return }
         do {
+            processingResult = nil
             let attempt = try AnswerSubmissionService(
                 now: environment.dependencies.now,
                 diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
@@ -148,7 +174,7 @@ struct AnswerEditorView: View {
         errorMessage = nil
         Task { @MainActor in
             do {
-                _ = try await AnswerProcessingService(
+                processingResult = try await AnswerProcessingService(
                     aiClient: environment.dependencies.aiClient,
                     now: environment.dependencies.now,
                     diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
