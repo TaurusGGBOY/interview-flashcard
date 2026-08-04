@@ -81,6 +81,9 @@ struct PracticeView: View {
         .navigationTitle("练习")
         .accessibilityIdentifier(PracticeAccessibilityID.screen)
         .onAppear(perform: initializeTopicSelectionIfNeeded)
+        .onChange(of: topics.map(\.id)) { _, _ in
+            initializeTopicSelectionIfNeeded()
+        }
         .onChange(of: cards.map(\.id)) { _, _ in
             reconcileCurrentCard()
         }
@@ -214,7 +217,7 @@ struct PracticeView: View {
     }
 
     private func initializeTopicSelectionIfNeeded() {
-        guard !didInitializeTopicSelection else { return }
+        guard !didInitializeTopicSelection, !orderedTopics.isEmpty else { return }
         selectedTopicIDs = Set(orderedTopics.map(\.id))
         if let seed = environment.launchOptions.randomSeed {
             seededGenerator = SeededPracticeRandomNumberGenerator(seed: seed)
