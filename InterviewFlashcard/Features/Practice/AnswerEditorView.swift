@@ -25,6 +25,7 @@ struct AnswerEditorView: View {
     @State private var errorMessage: String?
     @State private var submittedAttemptID: UUID?
     @State private var processingResult: EvaluationRecord?
+    @State private var localSpeechCapability: LocalSpeechCapability = .unavailable(.recognizerUnavailable)
 
     init(questionID: UUID) {
         self.questionID = questionID
@@ -124,6 +125,11 @@ struct AnswerEditorView: View {
         }
         .navigationTitle("回答")
         .accessibilityIdentifier(AnswerEditorAccessibilityID.screen)
+        .task {
+            localSpeechCapability = await environment.resolvedSpeechTranscriber.localCapability(
+                locale: Locale(identifier: "zh-CN")
+            )
+        }
         .sheet(isPresented: $isShowingVoice) {
             if let card {
                 VoiceAnswerView(
@@ -145,12 +151,7 @@ struct AnswerEditorView: View {
     }
 
     private var speechCapabilityAllowsVoice: Bool {
-        switch environment.launchOptions.speechCapability {
-        case .unsupported, .denied, .permissionDenied:
-            false
-        case .automatic, .supported, .fixtureSupported:
-            true
-        }
+        localSpeechCapability.canStartVoiceAnswer
     }
 
     private func submitText() {
