@@ -36,7 +36,7 @@ fi
 
 for path in "$REPOSITORY_ROOT"/build.log "$REPOSITORY_ROOT"/launch.log "$REPOSITORY_ROOT"/diagnostics; do
   [[ -e "$path" ]] || continue
-  if rg -n -i 'Authorization:[[:space:]]*Bearer|secret-marker|\.m4a' "$path"; then
+  if rg -n -i 'Authorization:[[:space:]]*Bearer|secret-marker|https?://[^[:space:]]*\.m4a|audio(_|-)url' "$path"; then
     echo "FAILED: sensitive token or audio upload marker found in $path" >&2
     exit 1
   fi
