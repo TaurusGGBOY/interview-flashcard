@@ -9,6 +9,9 @@ private enum PracticeAccessibilityID {
     static let card = "practice.card"
     static let skip = "practice.skip"
     static let answer = "practice.answer"
+    static let swipeHint = "practice.swipe-hint"
+    static let skipIndicator = "practice.skip-indicator"
+    static let answerIndicator = "practice.answer-indicator"
     static let changeFilters = "practice.change-filters"
 
     static func topic(_ id: UUID) -> String {
@@ -35,6 +38,10 @@ struct PracticeView: View {
     @State private var currentCard: QuestionCardSnapshot?
     @State private var didInitializeTopicSelection = false
     @State private var seededGenerator: SeededPracticeRandomNumberGenerator?
+    @State private var dragTranslation: CGSize = .zero
+    @State private var isSwipeInFlight = false
+    @State private var answeringCardID: UUID?
+    @State private var showSwipeHint = true
 
     init(drawService: QuestionDrawService = QuestionDrawService()) {
         self.drawService = drawService
@@ -79,6 +86,9 @@ struct PracticeView: View {
             }
         }
         .navigationTitle("练习")
+        .navigationDestination(item: $answeringCardID) { questionID in
+            AnswerEditorView(questionID: questionID)
+        }
         .accessibilityIdentifier(PracticeAccessibilityID.screen)
         .onAppear(perform: initializeTopicSelectionIfNeeded)
         .onChange(of: topics.map(\.id)) { _, _ in
@@ -143,50 +153,199 @@ struct PracticeView: View {
     }
 
     private func cardView(_ card: QuestionCardSnapshot) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text(card.topicName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+        GeometryReader { geometry in
+            let cardWidth = max(geometry.size.width - 32, 1)
 
-                Text(card.questionText)
-                    .font(.title2.weight(.semibold))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityAddTraits(.isHeader)
-
-                Text("满分答案会在提交回答后显示。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                NavigationLink {
-                    AnswerEditorView(questionID: card.id)
-                } label: {
-                    Label("开始回答", systemImage: "pencil.and.outline")
-                        .frame(maxWidth: .infinity)
+            VStack(spacing: 18) {
+                if showSwipeHint {
+                    Text("左滑跳过 · 右滑开始回答")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier(PracticeAccessibilityID.swipeHint)
                 }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier(PracticeAccessibilityID.answer)
 
-                Button {
-                    drawNextCard()
-                } label: {
-                    Label("跳过，随机抽下一题", systemImage: "shuffle")
-                        .frame(maxWidth: .infinity)
+                swipeCard(card, width: cardWidth)
+                    .frame(maxHeight: .infinity)
+
+                HStack(spacing: 16) {
+                    Button {
+                        commitSwipe(.skip, card: card, cardWidth: cardWidth)
+                    } label: {
+                        Label("跳过", systemImage: "xmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .disabled(isSwipeInFlight)
+                    .accessibilityIdentifier(PracticeAccessibilityID.skip)
+
+                    Button {
+                        commitSwipe(.answer, card: card, cardWidth: cardWidth)
+                    } label: {
+                        Label("开始回答", systemImage: "pencil.and.outline")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(isSwipeInFlight)
+                    .accessibilityIdentifier(PracticeAccessibilityID.answer)
                 }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier(PracticeAccessibilityID.skip)
 
                 Button("调整 Topic 和练习范围") {
                     currentCard = nil
                     phase = .filters
                 }
-                .frame(maxWidth: .infinity)
+                .disabled(isSwipeInFlight)
                 .accessibilityIdentifier(PracticeAccessibilityID.changeFilters)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
+    }
+
+    private func swipeCard(_ card: QuestionCardSnapshot, width: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.background)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(.quaternary, lineWidth: 1)
+
+            VStack(alignment: .leading, spacing: 18) {
+                Text(card.topicName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Divider()
+
+                ScrollView {
+                    Text(card.questionText)
+                        .font(.title2.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                .scrollIndicators(.hidden)
+            }
+            .padding(24)
+
+            swipeOverlay(cardWidth: width)
+        }
+        .frame(width: width)
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+        .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .offset(x: dragTranslation.width)
+        .rotationEffect(.degrees(Double(dragTranslation.width / width) * 7))
+        .simultaneousGesture(swipeGesture(for: card, cardWidth: width))
+        .allowsHitTesting(!isSwipeInFlight)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(PracticeAccessibilityID.card)
+    }
+
+    @ViewBuilder
+    private func swipeOverlay(cardWidth: CGFloat) -> some View {
+        if dragTranslation.width < 0 {
+            swipeIndicator(
+                title: "跳过",
+                systemImage: "xmark",
+                color: .red
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(24)
+            .opacity(swipeProgress(cardWidth: cardWidth))
+            .accessibilityIdentifier(PracticeAccessibilityID.skipIndicator)
+        } else if dragTranslation.width > 0 {
+            swipeIndicator(
+                title: "开始回答",
+                systemImage: "pencil.and.outline",
+                color: .green
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(24)
+            .opacity(swipeProgress(cardWidth: cardWidth))
+            .accessibilityIdentifier(PracticeAccessibilityID.answerIndicator)
+        }
+    }
+
+    private func swipeIndicator(
+        title: String,
+        systemImage: String,
+        color: Color
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.headline.weight(.bold))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .foregroundStyle(color)
+            .background(color.opacity(0.12), in: Capsule())
+            .overlay(Capsule().stroke(color, lineWidth: 2))
+    }
+
+    private func swipeProgress(cardWidth: CGFloat) -> Double {
+        let threshold = cardWidth * PracticeSwipeInteraction.distanceThresholdRatio
+        return Double(min(abs(dragTranslation.width) / max(threshold, 1), 1))
+    }
+
+    private func swipeGesture(
+        for card: QuestionCardSnapshot,
+        cardWidth: CGFloat
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard !isSwipeInFlight else { return }
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                dragTranslation = CGSize(width: value.translation.width, height: 0)
+                showSwipeHint = false
+            }
+            .onEnded { value in
+                guard !isSwipeInFlight else { return }
+                let action = PracticeSwipeInteraction.action(
+                    translation: value.translation,
+                    predictedEndTranslation: value.predictedEndTranslation,
+                    cardWidth: cardWidth
+                )
+                guard let action else {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                        dragTranslation = .zero
+                    }
+                    return
+                }
+                commitSwipe(action, card: card, cardWidth: cardWidth)
+            }
+    }
+
+    private func commitSwipe(
+        _ action: PracticeSwipeAction,
+        card: QuestionCardSnapshot,
+        cardWidth: CGFloat
+    ) {
+        guard !isSwipeInFlight else { return }
+        isSwipeInFlight = true
+        showSwipeHint = false
+
+        let exitOffset = action == .skip
+            ? -(cardWidth + 160)
+            : cardWidth + 160
+
+        withAnimation(
+            .easeOut(duration: 0.22),
+            completionCriteria: .logicallyComplete
+        ) {
+            dragTranslation = CGSize(width: exitOffset, height: 0)
+        } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                dragTranslation = .zero
+            }
+            isSwipeInFlight = false
+
+            switch action {
+            case .skip:
+                drawNextCard(excluding: card.id)
+            case .answer:
+                answeringCardID = card.id
+            }
+        }
     }
 
     private var emptyView: some View {
@@ -206,12 +365,17 @@ struct PracticeView: View {
         }
     }
 
-    private func drawNextCard() {
+    private func drawNextCard(excluding cardID: UUID? = nil) {
+        let drawPool = PracticeSwipeInteraction.nextDrawPool(
+            from: eligibleCards,
+            excluding: cardID
+        )
+
         if var seededGenerator {
-            currentCard = drawService.draw(from: eligibleCards, using: &seededGenerator)
+            currentCard = drawService.draw(from: drawPool, using: &seededGenerator)
             self.seededGenerator = seededGenerator
         } else {
-            currentCard = drawService.draw(from: eligibleCards)
+            currentCard = drawService.draw(from: drawPool)
         }
         phase = currentCard == nil ? .empty : .card
     }
