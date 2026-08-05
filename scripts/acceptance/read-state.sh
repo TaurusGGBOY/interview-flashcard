@@ -46,7 +46,9 @@ if [[ ! -s "$SOURCE_PATH" ]]; then
   echo "BLOCKED: diagnostic state is missing or empty: $SOURCE_PATH" >&2
   exit 1
 fi
-if ! plutil -lint "$SOURCE_PATH" >/dev/null; then
+# macOS plutil's default -lint mode only accepts XML/binary property lists;
+# use JSON conversion as a non-mutating syntax check for this JSON diagnostic.
+if ! plutil -convert json -o /dev/null "$SOURCE_PATH" >/dev/null; then
   echo "BLOCKED: diagnostic state is not valid JSON" >&2
   exit 1
 fi

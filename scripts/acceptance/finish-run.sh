@@ -80,7 +80,9 @@ for screenshot_name in before.png after.png; do
     exit 1
   fi
 done
-plutil -lint "$RUN_DIR/state.json" >/dev/null || {
+# macOS plutil's default -lint mode only accepts XML/binary property lists;
+# use JSON conversion as a non-mutating syntax check for this JSON evidence.
+plutil -convert json -o /dev/null "$RUN_DIR/state.json" >/dev/null || {
   echo "FAILED: state.json is not valid JSON" >&2
   exit 1
 }
