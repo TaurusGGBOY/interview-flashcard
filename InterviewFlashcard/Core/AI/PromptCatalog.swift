@@ -10,7 +10,7 @@ enum AIOperation: String, Codable, Equatable, Sendable {
 
 enum PromptCatalog {
     static let decomposeVersion = "decompose-v1"
-    static let refineVersion = "refine-v1"
+    static let refineVersion = "refine-senior-v2"
     static let reclassifyVersion = "reclassify-v1"
     static let polishVersion = "polish-v1"
     static let evaluateVersion = "evaluate-general-v1"
@@ -37,6 +37,8 @@ enum PromptCatalog {
         case .refine:
             return common + """
             \nPolish and deduplicate only within this batch. You may merge candidates, but every output must list all merged candidate IDs. Produce a standalone question, a full-score answer grounded only in supplied material, one existing topic name, and source anchors. Creating a new topic is forbidden.
+
+            The full-score answer MUST be Markdown with these three sections, in this order: “## 结论”, “## 核心要点”, and “## 边界与取舍”. Under “## 核心要点” provide at least three distinct, non-empty bullet points; empty bullets or repeated wording do not count. Explain the mechanism (why and how it works), operational boundaries and failure modes, and engineering tradeoffs such as consistency, latency, cost, complexity, or maintainability. Include a concrete follow-up direction or interview deepening point. Do not return a generic definition or a one- or two-sentence summary. Keep every claim traceable to the supplied source material; if the material is insufficient, preserve the uncertainty instead of inventing facts.
             """
         case .reclassify:
             return common + """

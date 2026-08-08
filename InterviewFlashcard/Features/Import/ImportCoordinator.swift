@@ -19,6 +19,7 @@ final class ImportCoordinator {
         case malformedCandidateAnchors(UUID)
         case invalidDecomposeResponse(UUID)
         case invalidRefineResponse(UUID)
+        case invalidReferenceAnswer(UUID, FullScoreAnswerQualityPolicy.Rejection)
         case missingOthersTopic
     }
 
@@ -30,6 +31,18 @@ final class ImportCoordinator {
         let ownedEndOffset: Int
         let ownedStartLine: Int
         let ownedEndLine: Int
+    }
+
+    private struct StagedCandidateMutation {
+        let primary: QuestionCandidateRecord
+        let duplicates: [QuestionCandidateRecord]
+        let card: RefinedCardDraft
+        let sourceAnchor: String
+    }
+
+    private struct ActivationPlan {
+        let candidate: QuestionCandidateRecord
+        let keyPointsJSON: String
     }
 
     @ObservationIgnored private let context: ModelContext
@@ -408,6 +421,8 @@ final class ImportCoordinator {
             return (record.id, Set(anchors))
         })
         var consumed = Set<UUID>()
+        var mutations: [StagedCandidateMutation] = []
+        mutations.reserveCapacity(response.cards.count)
 
         for card in response.cards {
             let mergedIDs = Set(card.mergedCandidateIDs)
@@ -415,6 +430,7 @@ final class ImportCoordinator {
                 result.formUnion(anchorsByID[id] ?? [])
             }
             guard !mergedIDs.isEmpty,
+                  card.mergedCandidateIDs.count == mergedIDs.count,
                   mergedIDs.isSubset(of: Set(byID.keys)),
                   consumed.isDisjoint(with: mergedIDs),
                   !card.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -424,24 +440,44 @@ final class ImportCoordinator {
                   card.sourceAnchors.allSatisfy({ $0.sourceDocumentID == batch.importRun.sourceDocument.id }) else {
                 throw ImportError.invalidRefineResponse(batch.id)
             }
-            consumed.formUnion(mergedIDs)
             let mergedRecords = card.mergedCandidateIDs.compactMap { byID[$0] }
                 .sorted { $0.sourceOrder < $1.sourceOrder }
             guard let primary = mergedRecords.first else {
                 throw ImportError.invalidRefineResponse(batch.id)
             }
-            primary.questionText = card.question
-            primary.proposedAnswerText = card.fullScoreAnswer
-            primary.proposedTopicName = card.topicName
-            primary.sourceAnchor = String(decoding: try encoder.encode(card.sourceAnchors), as: UTF8.self)
-            primary.status = .refined
-            for duplicate in mergedRecords.dropFirst() {
-                duplicate.status = .duplicateWithinBatch
+            switch FullScoreAnswerQualityPolicy.assess(card.fullScoreAnswer) {
+            case .success:
+                break
+            case let .failure(rejection):
+                throw ImportError.invalidReferenceAnswer(batch.id, rejection)
             }
+            let sourceAnchor = String(decoding: try encoder.encode(card.sourceAnchors), as: UTF8.self)
+            consumed.formUnion(mergedIDs)
+            mutations.append(
+                StagedCandidateMutation(
+                    primary: primary,
+                    duplicates: Array(mergedRecords.dropFirst()),
+                    card: card,
+                    sourceAnchor: sourceAnchor
+                )
+            )
         }
 
         guard consumed == Set(byID.keys) else {
             throw ImportError.invalidRefineResponse(batch.id)
+        }
+
+        // Apply candidate mutations only after every card in this batch has
+        // passed structural, source-anchor, and full-score answer validation.
+        for mutation in mutations {
+            mutation.primary.questionText = mutation.card.question
+            mutation.primary.proposedAnswerText = mutation.card.fullScoreAnswer
+            mutation.primary.proposedTopicName = mutation.card.topicName
+            mutation.primary.sourceAnchor = mutation.sourceAnchor
+            mutation.primary.status = .refined
+            for duplicate in mutation.duplicates {
+                duplicate.status = .duplicateWithinBatch
+            }
         }
     }
 
@@ -462,12 +498,30 @@ final class ImportCoordinator {
             .filter { $0.status == .refined }
             .sorted { $0.sourceOrder < $1.sourceOrder }
 
+        let encoder = JSONEncoder()
+        var activationPlans: [ActivationPlan] = []
+        activationPlans.reserveCapacity(refinedCandidates.count)
+        for candidate in refinedCandidates {
+            let keyPoints: [String]
+            switch FullScoreAnswerQualityPolicy.assess(candidate.proposedAnswerText) {
+            case let .success(points):
+                keyPoints = points
+            case let .failure(rejection):
+                throw ImportError.invalidReferenceAnswer(run.id, rejection)
+            }
+            let keyPointsJSON = String(decoding: try encoder.encode(keyPoints), as: UTF8.self)
+            activationPlans.append(
+                ActivationPlan(candidate: candidate, keyPointsJSON: keyPointsJSON)
+            )
+        }
+
         run.status = .activating
         run.updatedAt = now()
         try saveAndExport()
 
         let timestamp = now()
-        for candidate in refinedCandidates {
+        for plan in activationPlans {
+            let candidate = plan.candidate
             let topic = candidate.proposedTopicName.flatMap { topicByName[$0] } ?? others
             let card = QuestionCardRecord(
                 questionText: candidate.questionText,
@@ -483,6 +537,7 @@ final class ImportCoordinator {
                 ReferenceAnswerVersionRecord(
                     version: 1,
                     answerText: candidate.proposedAnswerText,
+                    keyPointsJSON: plan.keyPointsJSON,
                     origin: .aiGenerated,
                     promptVersion: PromptCatalog.refineVersion,
                     createdAt: timestamp,
@@ -519,6 +574,9 @@ final class ImportCoordinator {
             return String(describing: error)
         }
         if let error = error as? ImportError {
+            if case let .invalidReferenceAnswer(_, rejection) = error {
+                return rejection.description
+            }
             return String(describing: error)
         }
         return String(describing: type(of: error))

@@ -5,6 +5,23 @@ import XCTest
 
 enum Fixtures {
     static let now = Date(timeIntervalSince1970: 1_787_846_400)
+    static let seniorReferenceAnswer = """
+    ## 结论
+    可靠的并发服务要先隔离共享状态，再用可观测的失败恢复流程保证结果一致；实现选择必须结合吞吐、延迟和运维成本。
+
+    ## 核心要点
+    - 通过隔离共享状态降低并发竞争，并用锁或 actor 明确访问边界。
+    - 失败时使用幂等重试和补偿机制恢复，避免重复副作用。
+    - 根据一致性、延迟与成本做工程取舍，并通过监控和压测验证方案。
+
+    ## 边界与取舍
+    当下游超时、重复投递或部分失败时，重试可能放大流量，因此应设置超时、退避和上限；强一致方案会牺牲部分吞吐，最终一致方案则需要处理读到旧数据的窗口。后续可以追问如何设计幂等键、如何观测恢复进度，以及怎样在容量受限时降级。
+    """
+    static let indentedSeniorReferenceAnswer = seniorReferenceAnswer
+        .split(separator: "\n", omittingEmptySubsequences: false)
+        .map { "    \($0)" }
+        .joined(separator: "\n")
+
     static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
