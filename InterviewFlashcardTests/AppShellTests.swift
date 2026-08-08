@@ -55,4 +55,28 @@ final class AppShellTests: XCTestCase {
         XCTAssertNil(options.seedFixture)
         #endif
     }
+
+    @MainActor
+    func testDebugIconLaunchReusesPersistedProviderWithoutArguments() {
+        let suiteName = "AppShellTests.persisted-provider"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(
+            AppEnvironment.LaunchOptions.AIProvider.deepseek.rawValue,
+            forKey: AppEnvironment.SettingsKey.aiProvider
+        )
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let options = AppEnvironment.LaunchOptions.current(
+            arguments: ["InterviewFlashcard"],
+            environment: [:],
+            userDefaults: defaults
+        )
+
+        #if DEBUG
+        XCTAssertEqual(options.aiProvider, .deepseek)
+        #else
+        XCTAssertEqual(options.aiProvider, .deepseek)
+        #endif
+    }
 }

@@ -3,9 +3,10 @@ import Observation
 
 @MainActor
 @Observable
-final class AppEnvironment {
+public final class AppEnvironment {
     enum SettingsKey {
         static let deepSeekModel = "settings.deepseek.model"
+        static let aiProvider = "settings.ai.provider"
     }
 
     struct LaunchOptions: Equatable, Sendable {
@@ -32,7 +33,8 @@ final class AppEnvironment {
 
         static func current(
             arguments: [String] = ProcessInfo.processInfo.arguments,
-            environment: [String: String] = ProcessInfo.processInfo.environment
+            environment: [String: String] = ProcessInfo.processInfo.environment,
+            userDefaults: UserDefaults = .standard
         ) -> LaunchOptions {
             let valueAfter: (String) -> String? = { flag in
                 guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else {
@@ -44,6 +46,7 @@ final class AppEnvironment {
             #if DEBUG
             let provider = AIProvider(rawValue: valueAfter("-IFAIProvider") ?? "")
                 ?? AIProvider(rawValue: environment["IF_DEFAULT_AI_PROVIDER"] ?? "")
+                ?? AIProvider(rawValue: userDefaults.string(forKey: SettingsKey.aiProvider) ?? "")
                 ?? .stub
             let speech = SpeechCapabilityOverride(rawValue: valueAfter("-IFSpeechCapability") ?? "") ?? .automatic
             return LaunchOptions(
@@ -111,10 +114,14 @@ final class AppEnvironment {
         self.dependencies = dependencies
     }
 
+    public convenience init() {
+        self.init(launchOptions: .current(), dependencies: .live)
+    }
+
     var configuredModel: String {
         get {
             UserDefaults.standard.string(forKey: SettingsKey.deepSeekModel)
-                ?? "deepseek-chat"
+                ?? "deepseek-v4-flash"
         }
         set {
             UserDefaults.standard.set(newValue, forKey: SettingsKey.deepSeekModel)
