@@ -1,0 +1,215 @@
+import SwiftUI
+
+struct EvaluationResultView: View {
+    let evaluation: EvaluationRecord
+    let onContinue: () -> Void
+
+    private var presentation: EvaluationPresentation {
+        EvaluationPresentation(evaluation: evaluation)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                scoreHeader
+                ScoreRadarChart(dimensions: presentation.dimensions)
+                dimensions
+                feedbackSections
+                answerComparison
+                NavigationLink {
+                    QuestionHistoryView(question: evaluation.attempt.question)
+                } label: {
+                    Label("查看这道题的回答历史", systemImage: "clock.arrow.circlepath")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    onContinue()
+                } label: {
+                    Label("下一题", systemImage: "arrow.right")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier(AnswerEditorAccessibilityID.continueSession)
+            }
+            .safeAreaPadding(.horizontal, 20)
+            .safeAreaPadding(.vertical, 16)
+        }
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .navigationTitle("本次结果")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier(AnswerEditorAccessibilityID.result)
+    }
+
+    private var scoreHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("回答已保存")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let totalScore = presentation.totalScore {
+                Text("\(totalScore)")
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .foregroundStyle(scoreColor(totalScore))
+                Text("/ 100 综合得分")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("暂不可评分")
+                    .font(.title2.weight(.bold))
+                Text("回答已保存，可稍后重试评分。")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityIdentifier(AnswerEditorAccessibilityID.resultScore)
+    }
+
+    private var dimensions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("六维具体详情")
+                .font(.headline)
+            ForEach(Array(presentation.dimensions.enumerated()), id: \.element.dimension.rawValue) { index, row in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(row.dimension.displayName)
+                            .font(.subheadline.weight(.medium))
+                        Spacer(minLength: 12)
+                        Text("\(row.score)/100")
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                    }
+                    ProgressView(value: Double(row.score), total: 100)
+                        .tint(scoreColor(row.score))
+                    Text(row.feedback)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    if !row.evidence.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("原回答证据", systemImage: "text.quote")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(Array(row.evidence.enumerated()), id: \.offset) { _, evidence in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("“\(evidence.quote)”")
+                                        .font(.footnote)
+                                        .textSelection(.enabled)
+                                    Text(evidence.explanation)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.leading, 8)
+                            }
+                        }
+                    }
+
+                    if !row.missedPoints.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("本题遗漏", systemImage: "exclamationmark.circle")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.orange)
+                            ForEach(Array(row.missedPoints.enumerated()), id: \.offset) { _, point in
+                                Label(point, systemImage: "minus.circle")
+                                    .font(.caption)
+                                    .labelStyle(FeedbackLabelStyle())
+                            }
+                        }
+                    }
+                }
+                if index < presentation.dimensions.count - 1 { Divider() }
+            }
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .accessibilityIdentifier(PracticeAccessibilityID.details)
+    }
+
+    @ViewBuilder
+    private var feedbackSections: some View {
+        if !presentation.strengths.isEmpty {
+            feedbackList(title: "做得好的地方", icon: "checkmark.circle.fill", color: .green, items: presentation.strengths)
+        }
+        if !presentation.gaps.isEmpty {
+            feedbackList(title: "本题缺口", icon: "minus.circle.fill", color: .orange, items: presentation.gaps)
+        }
+        if !presentation.factualErrors.isEmpty {
+            feedbackList(title: "事实错误", icon: "exclamationmark.triangle.fill", color: .red, items: presentation.factualErrors)
+        }
+        if !presentation.improvements.isEmpty {
+            feedbackList(title: "下一次改进", icon: "arrow.up.right.circle.fill", color: .orange, items: presentation.improvements)
+        }
+        if !presentation.warnings.isEmpty {
+            feedbackList(title: "评分提示", icon: "info.circle.fill", color: .secondary, items: presentation.warnings)
+        }
+    }
+
+    private func feedbackList(title: String, icon: String, color: Color, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: icon)
+                .font(.headline)
+                .foregroundStyle(color)
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                Label(item, systemImage: "circle.fill")
+                    .font(.subheadline)
+                    .labelStyle(FeedbackLabelStyle())
+            }
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var answerComparison: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("回答对照")
+                .font(.headline)
+            answerBlock(title: "原始回答", text: presentation.rawText)
+            if let polishedText = presentation.polishedText {
+                answerBlock(title: "历史润色版本", text: polishedText)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("满分答案（v\(presentation.referenceVersion)）")
+                    .font(.subheadline.weight(.semibold))
+                Text(presentation.referenceAnswer)
+                    .textSelection(.enabled)
+            }
+            .padding(12)
+            .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func answerBlock(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(text)
+                .textSelection(.enabled)
+        }
+        .padding(12)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func scoreColor(_ score: Int) -> Color {
+        switch score {
+        case 80...: .green
+        case 60..<80: .orange
+        default: .red
+        }
+    }
+}
+
+private struct FeedbackLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            configuration.icon
+                .font(.system(size: 5))
+                .foregroundStyle(.secondary)
+            configuration.title
+        }
+    }
+}

@@ -16,6 +16,10 @@ enum PracticeAccessibilityID {
     static let changeFilters = "practice.change-filters"
     static let emptyLibrary = "practice.empty.library"
     static let emptyFilter = "practice.empty.filter"
+    static let radar = "evaluation.radar"
+    static let evaluationRadar = radar
+    static let details = "evaluation.details"
+    static let evaluationDetails = details
 
     static func topic(_ id: UUID) -> String {
         "practice.topic.\(id.uuidString.lowercased())"

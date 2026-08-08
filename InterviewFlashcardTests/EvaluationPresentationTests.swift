@@ -2,6 +2,10 @@ import SwiftData
 import XCTest
 
 final class EvaluationPresentationTests: XCTestCase {
+    func testRadarAccessibilityIdentifierIsStable() {
+        XCTAssertEqual(PracticeAccessibilityID.radar, "evaluation.radar")
+    }
+
     @MainActor
     func testPresentationDecodesAllFeedbackAndUsesLatestPolishRevision() throws {
         let context = try TestModelContainer.make().mainContext
@@ -152,5 +156,40 @@ final class EvaluationPresentationTests: XCTestCase {
         XCTAssertTrue(presentation.factualErrors.isEmpty)
         XCTAssertEqual(presentation.dimensions.count, ScoreDimension.allCases.count)
         XCTAssertEqual(presentation.dimensions.allSatisfy { $0.feedback.isEmpty == false }, true)
+    }
+
+    @MainActor
+    func testPresentationOmitsLegacyPolishedTextWhenItMatchesRawAnswer() throws {
+        let context = try TestModelContainer.make().mainContext
+        let card = try Fixtures.makeCard(context: context)
+        let attempt = try AnswerSubmissionService().submitText(
+            questionID: card.id,
+            rawText: "原始回答",
+            context: context
+        )
+        context.insert(
+            PolishResultRecord(
+                revision: 1,
+                inputText: attempt.rawText,
+                polishedText: attempt.rawText,
+                promptVersion: "test",
+                modelID: "stub",
+                createdAt: Fixtures.now,
+                attempt: attempt
+            )
+        )
+        let evaluation = EvaluationRecord(
+            totalScore: 0,
+            scores: DimensionScores(correctness: 0, coverage: 0, reasoning: 0, structure: 0, tradeoffs: 0, precision: 0),
+            confidence: "0.00",
+            provider: "stub",
+            modelID: "stub",
+            promptVersion: "test",
+            rubricVersion: "test",
+            attempt: attempt
+        )
+        context.insert(evaluation)
+
+        XCTAssertNil(EvaluationPresentation(evaluation: evaluation).polishedText)
     }
 }
