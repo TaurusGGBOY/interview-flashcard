@@ -86,7 +86,7 @@ actor StubAIClient: AIClient {
                 id: derivedUUID(base: request.requestID, salt: candidate.ordinal + 101),
                 mergedCandidateIDs: [candidate.id],
                 question: candidate.question,
-                fullScoreAnswer: candidate.sourceBackedAnswerMaterial,
+                fullScoreAnswer: seniorReferenceAnswer(from: candidate.sourceBackedAnswerMaterial),
                 topicName: topic,
                 sourceAnchors: candidate.sourceAnchors
             )
@@ -207,6 +207,38 @@ actor StubAIClient: AIClient {
 
     private func sourceQuote(from markdown: String) -> String {
         String(markdown.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+    }
+
+    /// Keep the deterministic importer fixture compatible with the production
+    /// reference-answer quality gate.  The real provider is instructed to
+    /// author this structure; the stub mirrors that contract while retaining a
+    /// bounded excerpt of the source material for traceability in UI tests.
+    private func seniorReferenceAnswer(from material: String) -> String {
+        let excerpt = material
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                let text = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
+                if text.hasPrefix("#") {
+                    return String(text.drop(while: { $0 == "#" || $0 == " " }))
+                }
+                return text
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        let source = String(excerpt.prefix(280))
+
+        return """
+        ## 结论
+        原文材料摘录：\(source)。回答应通过材料中的步骤或约束解释结果，并把适用范围说清楚。这样既保留来源依据，也能让面试官检查机制是否成立。
+
+        ## 核心要点
+        - 通过原文描述的步骤或机制解释为什么会得到该结果，从而避免只背结论。
+        - 根据材料中的输入、状态或边界条件拆解流程，同时说明正常路径与异常路径。
+        - 结合一致性、延迟、成本或复杂度做工程取舍，并用测试或观测验证关键假设。
+
+        ## 边界与取舍
+        材料中的具体约束决定方案边界；当输入异常、依赖失败或资源受限时，需要处理失败、设置超时并提供降级路径。更强的一致性通常带来延迟和成本，简单方案则可能牺牲覆盖度，因此应结合业务风险选择，并继续用监控和压测验证。
+        """
     }
 
     private struct HeadingSection {
