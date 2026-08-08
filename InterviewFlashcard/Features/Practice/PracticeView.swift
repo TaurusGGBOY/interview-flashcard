@@ -15,6 +15,7 @@ struct PracticeView: View {
     @State private var seededGenerator: SeededPracticeRandomNumberGenerator?
     @State private var isFilterPresented = false
     @State private var didInitializeTopicSelection = false
+    @State private var didApplyFilter = false
 
     init(
         drawService: QuestionDrawService = QuestionDrawService(),
@@ -84,7 +85,7 @@ struct PracticeView: View {
 
     private var canUndo: Bool {
         guard case .skipped = feedState.lastAction else { return false }
-        return currentCard == nil
+        return true
     }
 
     var body: some View {
@@ -121,9 +122,11 @@ struct PracticeView: View {
         .onAppear(perform: initializeTopicSelectionIfNeeded)
         .onChange(of: topics.map(\.id)) { _, _ in
             initializeTopicSelectionIfNeeded()
+            refreshDefaultTopicSelectionIfNeeded()
             reconcileCurrentCard()
         }
         .onChange(of: cards.map(\.id)) { _, _ in
+            refreshDefaultTopicSelectionIfNeeded()
             reconcileCurrentCard()
         }
         .onChange(of: cards.map { $0.attempts.count }) { _, _ in
@@ -134,6 +137,7 @@ struct PracticeView: View {
     private func applyFilter(_ selection: PracticeFilterSelection) {
         var updated = feedState
         Self.applyFilter(selection, to: &updated)
+        didApplyFilter = true
 
         // A filter operation is one atomic state transition: the old card and
         // undo affordance are discarded before the next card is drawn.
@@ -157,6 +161,17 @@ struct PracticeView: View {
             SeededPracticeRandomNumberGenerator.init(seed:)
         )
         drawNextCard()
+    }
+
+    private func refreshDefaultTopicSelectionIfNeeded() {
+        guard !didApplyFilter else { return }
+        let activeTopicIDs = Set(
+            orderedTopics
+                .filter { activeCardCount(for: $0) > 0 }
+                .map(\.id)
+        )
+        guard feedState.selectedTopicIDs != activeTopicIDs else { return }
+        feedState.selectedTopicIDs = activeTopicIDs
     }
 
     private func startAnswer() {
