@@ -29,6 +29,19 @@ struct PracticeSwipeInteraction: Sendable {
         return translation.width < 0 ? .skip : .answer
     }
 
+    static func crossedDistanceThreshold(
+        previousTranslation: CGSize,
+        currentTranslation: CGSize,
+        cardWidth: CGFloat
+    ) -> Bool {
+        guard cardWidth > 0 else { return false }
+        guard abs(currentTranslation.width) > abs(currentTranslation.height) else { return false }
+        let threshold = cardWidth * distanceThresholdRatio
+        let previousDistance = abs(previousTranslation.width)
+        let currentDistance = abs(currentTranslation.width)
+        return previousDistance < threshold && currentDistance >= threshold
+    }
+
     static func nextDrawPool(
         from cards: [QuestionCardSnapshot],
         excluding cardID: UUID?
