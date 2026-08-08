@@ -65,7 +65,7 @@ xcodegen generate
 bash scripts/acceptance/run-final-checks.sh
 ```
 
-`run-final-checks.sh` 会重新生成工程，运行完整 XCTest 与 Debug build，调用 `assert-iphone-app-metadata.sh`，扫描日志/诊断中的密钥和音频上传标记，并检查既有 Computer Use 证据以及 Task 8 证据。缺少最终截图、状态或视频时必须以 `BLOCKED` 退出，不能把静态通过写成验收通过。
+`run-final-checks.sh` 会重新生成工程，运行完整 XCTest 与 Debug build，使用 `real-question-demo`（随机种子 `20260805`）启动一次确定性 stub smoke，调用 `assert-iphone-app-metadata.sh`，扫描日志/诊断中的密钥和音频上传标记，并检查既有 Computer Use 证据以及 Task 8 证据。缺少最终截图、状态或视频时必须以 `BLOCKED` 退出，不能把静态通过写成验收通过。
 
 ### 真 AI 模式与缺 key 失败规则
 
@@ -99,7 +99,7 @@ env -u INTERVIEW_FLASHCARD_DEEPSEEK_API_KEY \
 
 ### 真实题目与界面检查点
 
-`real-question-demo` 至少包含三道 Go 技术题：`sync.Map.Load` 类型断言、Unicode rune 字符串翻转、goroutine 泄漏定位与取消。每道满分答案都必须有 `结论`、`核心要点`、`边界与取舍` 三个 Markdown 小节、至少三个不重复要点、机制、失败边界和工程权衡；Seeder 不创建任何假的回答、润色或评分记录。
+`real-question-demo` 至少包含三道来自 `go-interview/question/` 的 Go 技术题：q022 的 `sync.Map.Load` 类型断言、q003 的 Unicode rune 字符串翻转、q015 的未初始化 channel/`time.Tick` 并发与泄漏边界。每道满分答案都必须有 `结论`、`核心要点`、`边界与取舍` 三个 Markdown 小节、至少三个不重复要点、机制、失败边界和工程权衡；Seeder 不创建任何假的回答、润色或评分记录。
 
 按以下顺序操作并在每一步前重新读取 Device Hub 状态：
 

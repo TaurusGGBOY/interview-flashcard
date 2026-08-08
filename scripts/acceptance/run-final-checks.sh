@@ -18,6 +18,15 @@ if [[ -r "$ACCEPTANCE_ENV_PATH" ]]; then
   # shellcheck source=/dev/null
   source "$ACCEPTANCE_ENV_PATH"
 fi
+# `preflight.sh` is a child process; export any persisted overrides so it does
+# not silently fall back to /Applications/Xcode.app when this script is invoked
+# without inline environment assignments.
+if [[ -n "${INTERVIEW_XCODE_DEVELOPER_DIR:-}" ]]; then
+  export INTERVIEW_XCODE_DEVELOPER_DIR
+fi
+if [[ -n "${IF_SIMULATOR_UDID:-}" ]]; then
+  export IF_SIMULATOR_UDID
+fi
 
 if ! "$REPOSITORY_ROOT/scripts/dev/preflight.sh"; then
   echo "BLOCKED: full Xcode/iOS Simulator preflight did not pass; static checks continue." >&2
@@ -43,13 +52,18 @@ if [[ "$static_only" == "false" ]]; then
     echo "FAILED: final checks must use $PINNED_SIMULATOR_NAME ($PINNED_SIMULATOR_UDID)" >&2
     exit 1
   }
+  # Keep nested xcrun/simctl diagnostics on the same beta toolchain too.
+  export DEVELOPER_DIR="$INTERVIEW_XCODE_DEVELOPER_DIR"
 fi
 
 if ! command -v xcodegen >/dev/null 2>&1; then
   echo "FAILED: xcodegen is required for final checks" >&2
   exit 1
 fi
-xcodegen generate >/dev/null
+(
+  cd "$REPOSITORY_ROOT"
+  xcodegen generate >/dev/null
+)
 [[ -d "$PROJECT_PATH" ]] || {
   echo "FAILED: xcodegen did not create $PROJECT_PATH" >&2
   exit 1
@@ -92,7 +106,8 @@ if [[ "$static_only" == "false" ]]; then
   IF_BUILD_LOG_PATH="$REPOSITORY_ROOT/.build/logs/final-build.log" \
     IF_LAUNCH_LOG_PATH="$REPOSITORY_ROOT/.build/logs/final-launch.log" \
     "$REPOSITORY_ROOT/scripts/dev/build-and-launch.sh" \
-      --ai stub --stub-mode success --speech unsupported --fixture mvp-workflow
+      --ai stub --stub-mode success --speech unsupported \
+      --fixture real-question-demo --random-seed 20260805
 fi
 
 # A requested live run must fail before building or launching when the project
@@ -102,6 +117,10 @@ missing_key_output="$(env -u INTERVIEW_FLASHCARD_DEEPSEEK_API_KEY \
     --ai deepseek --speech unsupported 2>&1 || true)"
 if [[ "$missing_key_output" != *"INTERVIEW_FLASHCARD_DEEPSEEK_API_KEY is required"* ]]; then
   echo "FAILED: --ai deepseek without a key did not fail explicitly" >&2
+  exit 1
+fi
+if [[ "$missing_key_output" == *"ai_provider=stub"* ]]; then
+  echo "FAILED: --ai deepseek without a key silently fell back to the stub" >&2
   exit 1
 fi
 

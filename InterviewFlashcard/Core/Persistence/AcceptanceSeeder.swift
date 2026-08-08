@@ -37,7 +37,7 @@ enum AcceptanceSeeder {
 
     private static let reverseStringReferenceAnswer = """
     ## 结论
-    在 Go 中应先把字符串转换为可变的 `[]rune`，再用双指针从两端向中间交换，最后转换回字符串；这样按 Unicode code point 翻转，不需要额外的线性存储。
+    Go 的字符串不可变，因此应先转换为可变的 `[]rune`，再用双指针从两端向中间交换，最后转换回字符串；交换过程只需一个临时变量，但 rune 切片本身仍是 O(n) 的可变副本。
 
     ## 核心要点
     - `[]rune` 能避免直接按字节切分多字节字符，左右指针每次交换一个完整 code point。
@@ -52,7 +52,7 @@ enum AcceptanceSeeder {
 
     private static let goroutineLeakReferenceAnswer = """
     ## 结论
-    定位 goroutine 泄漏要先用 pprof、goroutine dump 和指标确认持续增长的调用栈，再为每条阻塞路径设计可取消的生命周期；避免泄漏的核心是让 context、channel 和所有退出分支拥有同一个关闭责任。
+    并发示例里，未初始化的 channel 会让发送和接收永久阻塞，`time.Tick` 又没有停止出口，二者都可能把 goroutine 和定时器留在后台。定位泄漏要先用 pprof、goroutine dump 和指标确认持续增长的调用栈，再为每条阻塞路径设计可取消的生命周期。
 
     ## 核心要点
     - 给长期任务传递带取消信号的 context，并在 select 中同时监听 `ctx.Done()` 与业务 channel。
@@ -102,7 +102,9 @@ enum AcceptanceSeeder {
             importerVersion: "acceptance-seeder-1",
             importedAt: now
         )
-        context.insert(source)
+        if name != "real-question-demo" {
+            context.insert(source)
+        }
 
         switch name {
         case "reclassification-103":
@@ -237,9 +239,9 @@ enum AcceptanceSeeder {
                 source: reverseStringSource,
                 now: now,
                 context: context,
-                questionText: "请实现一个不使用额外数据结构和存储空间的字符串翻转算法。",
+                questionText: "请实现一个算法，在不使用额外数据结构和存储空间的情况下，翻转给定字符串（长度不超过 5000）。",
                 answerText: Self.reverseStringReferenceAnswer,
-                sourceAnchor: "go-interview/question/q003.md#解题思路",
+                sourceAnchor: "go-interview/question/q003.md#问题描述",
                 keyPointsJSON: Self.reverseStringKeyPoints,
                 promptVersion: PromptCatalog.refineVersion
             )
@@ -249,9 +251,9 @@ enum AcceptanceSeeder {
                 source: goroutineLeakSource,
                 now: now,
                 context: context,
-                questionText: "Go 服务中如何定位并避免 goroutine 泄漏？",
+                questionText: "Go 并发题：未初始化 channel 与 time.Tick 的示例会发生什么，如何避免阻塞与 goroutine 泄漏？",
                 answerText: Self.goroutineLeakReferenceAnswer,
-                sourceAnchor: "go-interview/question/q015.md#解析",
+                sourceAnchor: "go-interview/question/q015.md#7-channel",
                 keyPointsJSON: Self.goroutineLeakKeyPoints,
                 promptVersion: PromptCatalog.refineVersion
             )
