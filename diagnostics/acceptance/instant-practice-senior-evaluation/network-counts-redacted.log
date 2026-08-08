@@ -1,0 +1,23 @@
+Computer Use acceptance network evidence (redacted)
+device=iPhone 17 Pro Max
+simulator_udid=779ACF98-BD23-4880-9F03-8DB9B9E43768
+provider=deepseek
+endpoint_host=api.deepseek.com
+endpoint_path=/chat/completions
+operation=evaluate
+request_count=2
+polish_request_count=0
+http_statuses=200,200
+protocols=h2,h2
+http_status=200
+protocol=h2
+transaction_duration_ms=40340,58470
+request_bytes=5749,5782
+response_bytes=23890,31827
+model_id=deepseek-v4-flash
+prompt_version=evaluate-senior-v3
+stub_marker_present=false
+
+Source: simulator unified log for the 2026-08-08 15:46:04 and 16:06:38 requests,
+plus the persisted store WAL markers. Request/response bodies, headers,
+credentials, raw answer text, and proxy details are intentionally omitted.

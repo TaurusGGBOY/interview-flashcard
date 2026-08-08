@@ -1,0 +1,52 @@
+{
+  "device": "iPhone 17 Pro Max",
+  "ios": "27.0",
+  "simulatorUDID": "779ACF98-BD23-4880-9F03-8DB9B9E43768",
+  "appBundleID": "com.gaoguobin.InterviewFlashcard",
+  "computerUse": {
+    "practiceQuestionAX": "practice.question",
+    "leftSwipeInstructionSeen": true,
+    "rightSwipeInstructionSeen": true,
+    "voiceControl": "unsupported: 本机无法本地转写",
+    "answerSubmittedThroughUI": true,
+    "historyRowScoreAX": "52 分",
+    "resultRadarAX": "evaluation.radar: 正确性 75、覆盖度 45、推理深度 40、表达结构 70、权衡意识 50、术语精确性 60",
+    "resultPageScoreAX": "59 / 100"
+  },
+  "realEvaluation": {
+    "provider": "deepseek",
+    "modelID": "deepseek-v4-flash",
+    "promptVersion": "evaluate-senior-v3",
+    "status": "completed",
+    "totalScore": 52,
+    "dimensions": {
+      "correctness": 65,
+      "coverage": 55,
+      "precision": 35,
+      "reasoning": 50,
+      "structure": 30,
+      "tradeoffs": 35
+    },
+    "polishResults": 0,
+    "stubMarkerPresent": false
+  },
+  "latestResultPage": {
+    "provider": "deepseek",
+    "modelID": "deepseek-v4-flash",
+    "promptVersion": "evaluate-senior-v3",
+    "status": "completed",
+    "totalScore": 59,
+    "dimensions": {
+      "correctness": 75,
+      "coverage": 45,
+      "precision": 60,
+      "reasoning": 40,
+      "structure": 70,
+      "tradeoffs": 50
+    },
+    "polishResults": 0,
+    "stubMarkerPresent": false,
+    "source": "Computer Use result page and evaluation.radar AX tree"
+  },
+  "secretsOmitted": true
+}

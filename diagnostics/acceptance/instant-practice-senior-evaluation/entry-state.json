@@ -1,0 +1,86 @@
+{
+  "attempts" : [
+    {
+      "id" : "CA82C68B-75DC-4883-8FE0-AC8BC21BF96C",
+      "inputMode" : "typed",
+      "processingStatus" : "completed",
+      "questionID" : "00000003-0000-0000-0000-000000000001",
+      "rawText" : "v[province]. interface{}sync.Map.Load. (any, bool) ok. value, ok := m.Load(“province”); if !ok { … }; province, ok := value.(string); if !ok { … } sync.Map. map. context. worker goroutine u",
+      "submittedAt" : "2026-08-08T07:46:04Z"
+    }
+  ],
+  "audioAssets" : [
+
+  ],
+  "cards" : [
+    {
+      "attemptCount" : 1,
+      "id" : "00000003-0000-0000-0000-000000000001",
+      "questionText" : "sync.Map 的用法：示例代码中 v[\"province\"] 为什么会编译失败，应该如何修正？",
+      "referenceAnswerCount" : 1,
+      "sourceDocumentID" : "00000009-0000-0000-0000-000000000001",
+      "topicID" : "00000008-0000-0000-0000-000000000001"
+    },
+    {
+      "attemptCount" : 0,
+      "id" : "00000003-0000-0000-0000-000000000002",
+      "questionText" : "请实现一个算法，在不使用额外数据结构和存储空间的情况下，翻转给定字符串（长度不超过 5000）。",
+      "referenceAnswerCount" : 1,
+      "sourceDocumentID" : "00000009-0000-0000-0000-000000000002",
+      "topicID" : "00000008-0000-0000-0000-000000000001"
+    },
+    {
+      "attemptCount" : 0,
+      "id" : "00000003-0000-0000-0000-000000000003",
+      "questionText" : "Go 并发题：未初始化 channel 与 time.Tick 的示例会发生什么，如何避免阻塞与 goroutine 泄漏？",
+      "referenceAnswerCount" : 1,
+      "sourceDocumentID" : "00000009-0000-0000-0000-000000000003",
+      "topicID" : "00000008-0000-0000-0000-000000000001"
+    }
+  ],
+  "evaluations" : [
+    {
+      "attemptID" : "CA82C68B-75DC-4883-8FE0-AC8BC21BF96C",
+      "dimensions" : {
+        "correctness" : 65,
+        "coverage" : 55,
+        "precision" : 35,
+        "reasoning" : 50,
+        "structure" : 30,
+        "tradeoffs" : 35
+      },
+      "id" : "049DF0F2-AFFA-41B5-85E9-9406FB08F13B",
+      "status" : "completed",
+      "totalScore" : 52
+    }
+  ],
+  "importRuns" : [
+
+  ],
+  "polishResults" : [
+
+  ],
+  "reclassificationRuns" : [
+
+  ],
+  "schemaVersion" : 1,
+  "topics" : [
+    {
+      "id" : "00000000-0000-0000-0000-000000000001",
+      "name" : "Others",
+      "systemKind" : "others"
+    },
+    {
+      "id" : "00000001-0000-0000-0000-000000000001",
+      "name" : "后端"
+    },
+    {
+      "id" : "00000001-0000-0000-0000-000000000002",
+      "name" : "iOS"
+    },
+    {
+      "id" : "00000008-0000-0000-0000-000000000001",
+      "name" : "Go"
+    }
+  ]
+}
