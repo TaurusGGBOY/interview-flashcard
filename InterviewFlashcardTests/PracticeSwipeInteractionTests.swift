@@ -76,6 +76,39 @@ final class PracticeSwipeInteractionTests: XCTestCase {
         XCTAssertEqual(pool, [onlyCard])
     }
 
+    func testSkippedQuestionCanReenterPoolAfterAnotherQuestionIsDrawn() {
+        let first = snapshot(ordinal: 1)
+        let second = snapshot(ordinal: 2)
+
+        let afterSkippingFirst = PracticeSwipeInteraction.nextDrawPool(
+            from: [first, second],
+            excluding: first.id
+        )
+        let afterLeavingSecond = PracticeSwipeInteraction.nextDrawPool(
+            from: [first, second],
+            excluding: second.id
+        )
+
+        XCTAssertEqual(afterSkippingFirst, [second])
+        XCTAssertEqual(afterLeavingSecond, [first])
+    }
+
+    func testSingleCardPoolCanBeDrawnRepeatedlyAfterSkip() {
+        let onlyCard = snapshot(ordinal: 1)
+
+        let firstPool = PracticeSwipeInteraction.nextDrawPool(
+            from: [onlyCard],
+            excluding: onlyCard.id
+        )
+        let secondPool = PracticeSwipeInteraction.nextDrawPool(
+            from: firstPool,
+            excluding: onlyCard.id
+        )
+
+        XCTAssertEqual(firstPool, [onlyCard])
+        XCTAssertEqual(secondPool, [onlyCard])
+    }
+
     private func snapshot(ordinal: Int) -> QuestionCardSnapshot {
         QuestionCardSnapshot(
             id: UUID(uuidString: String(format: "40000000-0000-0000-0000-%012d", ordinal))!,

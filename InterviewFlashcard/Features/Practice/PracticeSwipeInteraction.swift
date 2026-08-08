@@ -33,7 +33,9 @@ struct PracticeSwipeInteraction: Sendable {
         from cards: [QuestionCardSnapshot],
         excluding cardID: UUID?
     ) -> [QuestionCardSnapshot] {
-        guard let cardID else { return cards }
+        // A skip only prevents an immediate repeat when there is another card.
+        // Do not retain a presented-ID set: skipped cards must re-enter the pool.
+        guard let cardID, cards.count > 1 else { return cards }
         let alternatives = cards.filter { $0.id != cardID }
         return alternatives.isEmpty ? cards : alternatives
     }
