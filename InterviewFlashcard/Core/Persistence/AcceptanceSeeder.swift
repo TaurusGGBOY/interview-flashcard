@@ -17,7 +17,53 @@ enum AcceptanceSeeder {
         "insights",
         "trash",
         "mvp-workflow",
+        "real-question-demo",
     ]
+
+    private static let syncMapReferenceAnswer = """
+    ## 结论
+    `sync.Map.Load` 返回的是 `(any, bool)`，示例里的 `v` 仍然是 `interface{}`（即 `any`），所以不能直接用字符串下标；先做类型断言，再访问 map 才能编译并保持失败可观测。
+
+    ## 核心要点
+    - `Load` 只负责取出接口值和存在标记，必须先检查 `ok`，再把值断言为 `map[string]string`。
+    - 类型断言成功后才能执行 `typed["province"]`，断言失败应走显式错误或降级路径，不能让 panic 隐藏数据问题。
+    - `sync.Map` 适合读多写少、键集合动态的场景；普通 map 加锁通常更容易维护，需要用压测比较吞吐和内存。
+
+    ## 边界与取舍
+    当键不存在、值类型不符合预期或并发写入复杂时，`Load` 可能返回 `ok == false` 或断言失败；`sync.Map` 的便利性会牺牲部分类型安全和可读性。生产代码应记录异常、限制重试并用竞态检测和基准测试验证选择，后续可追问如何封装泛型访问器。
+    """
+
+    private static let syncMapKeyPoints = "[\"Load 返回接口值和存在标记，需先检查 ok 并做类型断言。\",\"断言成功后才能通过字符串下标访问 map，失败应走显式错误路径。\",\"sync.Map 与加锁 map 的选择要结合读写比例、吞吐和内存压测。\"]"
+
+    private static let reverseStringReferenceAnswer = """
+    ## 结论
+    在 Go 中应先把字符串转换为可变的 `[]rune`，再用双指针从两端向中间交换，最后转换回字符串；这样按 Unicode code point 翻转，不需要额外的线性存储。
+
+    ## 核心要点
+    - `[]rune` 能避免直接按字节切分多字节字符，左右指针每次交换一个完整 code point。
+    - 循环只需处理 `i < len(runes)/2`，交换 `runes[i]` 与 `runes[n-1-i]` 后即可原地完成翻转。
+    - 时间复杂度是 O(n)，切片本身需要 O(n) 的可变副本；若业务接受字节语义，`[]byte` 更快但不能保证 Unicode 正确。
+
+    ## 边界与取舍
+    组合字符、零宽连接符和规范化等复杂 Unicode 文本可能包含多个 code point，rune 翻转不等于按用户感知字符翻转；需要 grapheme 库时应明确增加依赖和成本。对超大字符串还要权衡复制内存与实现复杂度，后续可追问如何用 `utf8` 校验输入。
+    """
+
+    private static let reverseStringKeyPoints = "[\"使用 []rune 处理多字节字符，并通过双指针原地交换。\",\"循环边界为 i < n/2，时间复杂度 O(n)。\",\"rune 翻转不等于用户感知字符，复杂 Unicode 需要额外库和取舍。\"]"
+
+    private static let goroutineLeakReferenceAnswer = """
+    ## 结论
+    定位 goroutine 泄漏要先用 pprof、goroutine dump 和指标确认持续增长的调用栈，再为每条阻塞路径设计可取消的生命周期；避免泄漏的核心是让 context、channel 和所有退出分支拥有同一个关闭责任。
+
+    ## 核心要点
+    - 给长期任务传递带取消信号的 context，并在 select 中同时监听 `ctx.Done()` 与业务 channel。
+    - 发送方和接收方必须约定关闭方向，使用 `defer` 释放 ticker、连接和 worker，避免无人消费的 channel 永久阻塞。
+    - 用 goroutine 数量、阻塞栈和请求关联 ID 做监控，在压测、超时和客户端断连场景验证回收速度。
+
+    ## 边界与取舍
+    无缓冲 channel、忘记关闭响应体、无限重试和后台 goroutine 都可能造成泄漏；增加缓冲只能缓解瞬时背压，不能替代取消和超时。更严格的生命周期管理会增加样板代码，但能换取可预测的资源上限，后续可追问如何在服务关闭时等待 worker 安全退出。
+    """
+
+    private static let goroutineLeakKeyPoints = "[\"用 context.Done 让任务和 channel 阻塞路径可取消。\",\"明确 channel 关闭责任并用 defer 释放 ticker、连接和 worker。\",\"通过 goroutine 指标、阻塞栈和压测验证泄漏回收速度。\"]"
 
     @MainActor
     static func seed(named name: String, context: ModelContext) throws {
@@ -136,6 +182,79 @@ enum AcceptanceSeeder {
             _ = insertCard(ordinal: 2, topic: ios, source: source, now: now, context: context)
             _ = insertCard(ordinal: 3, topic: others, source: source, now: now, context: context)
             _ = insertAttempt(ordinal: 1, question: first, submittedAt: now, completed: true, context: context)
+        case "real-question-demo":
+            let go = TopicRecord(
+                id: stableUUID(namespace: 8, ordinal: 1),
+                name: "Go",
+                createdAt: now,
+                updatedAt: now
+            )
+            context.insert(go)
+
+            let syncMapSource = SourceDocumentRecord(
+                id: stableUUID(namespace: 9, ordinal: 1),
+                fileName: "q022.md",
+                sourcePath: "go-interview/question/q022.md",
+                contentHash: "real-go-q022-v1",
+                importerVersion: "real-demo-seed-v1",
+                importedAt: now
+            )
+            let reverseStringSource = SourceDocumentRecord(
+                id: stableUUID(namespace: 9, ordinal: 2),
+                fileName: "q003.md",
+                sourcePath: "go-interview/question/q003.md",
+                contentHash: "real-go-q003-v1",
+                importerVersion: "real-demo-seed-v1",
+                importedAt: now
+            )
+            let goroutineLeakSource = SourceDocumentRecord(
+                id: stableUUID(namespace: 9, ordinal: 3),
+                fileName: "q015.md",
+                sourcePath: "go-interview/question/q015.md",
+                contentHash: "real-go-q015-v1",
+                importerVersion: "real-demo-seed-v1",
+                importedAt: now
+            )
+            context.insert(syncMapSource)
+            context.insert(reverseStringSource)
+            context.insert(goroutineLeakSource)
+
+            _ = insertCard(
+                ordinal: 1,
+                topic: go,
+                source: syncMapSource,
+                now: now,
+                context: context,
+                questionText: "sync.Map 的用法：示例代码中 v[\"province\"] 为什么会编译失败，应该如何修正？",
+                answerText: Self.syncMapReferenceAnswer,
+                sourceAnchor: "go-interview/question/q022.md#解析",
+                keyPointsJSON: Self.syncMapKeyPoints,
+                promptVersion: PromptCatalog.refineVersion
+            )
+            _ = insertCard(
+                ordinal: 2,
+                topic: go,
+                source: reverseStringSource,
+                now: now,
+                context: context,
+                questionText: "请实现一个不使用额外数据结构和存储空间的字符串翻转算法。",
+                answerText: Self.reverseStringReferenceAnswer,
+                sourceAnchor: "go-interview/question/q003.md#解题思路",
+                keyPointsJSON: Self.reverseStringKeyPoints,
+                promptVersion: PromptCatalog.refineVersion
+            )
+            _ = insertCard(
+                ordinal: 3,
+                topic: go,
+                source: goroutineLeakSource,
+                now: now,
+                context: context,
+                questionText: "Go 服务中如何定位并避免 goroutine 泄漏？",
+                answerText: Self.goroutineLeakReferenceAnswer,
+                sourceAnchor: "go-interview/question/q015.md#解析",
+                keyPointsJSON: Self.goroutineLeakKeyPoints,
+                promptVersion: PromptCatalog.refineVersion
+            )
         default:
             break
         }
@@ -174,12 +293,17 @@ enum AcceptanceSeeder {
         topic: TopicRecord,
         source: SourceDocumentRecord,
         now: Date,
-        context: ModelContext
+        context: ModelContext,
+        questionText: String? = nil,
+        answerText: String? = nil,
+        sourceAnchor: String? = nil,
+        keyPointsJSON: String? = nil,
+        promptVersion: String? = nil
     ) -> QuestionCardRecord {
         let card = QuestionCardRecord(
             id: stableUUID(namespace: 3, ordinal: ordinal),
-            questionText: "验收题目 \(ordinal)：请解释该技术概念。",
-            sourceAnchor: "acceptance-fixture.md#question-\(ordinal)",
+            questionText: questionText ?? "验收题目 \(ordinal)：请解释该技术概念。",
+            sourceAnchor: sourceAnchor ?? "acceptance-fixture.md#question-\(ordinal)",
             createdAt: now,
             updatedAt: now,
             activatedAt: now,
@@ -192,9 +316,9 @@ enum AcceptanceSeeder {
             ReferenceAnswerVersionRecord(
                 id: stableUUID(namespace: 4, ordinal: ordinal),
                 version: 1,
-                answerText: "验收题目 \(ordinal) 的满分答案。",
-                keyPointsJSON: "[\"核心定义\",\"适用边界\"]",
-                promptVersion: "acceptance-v1",
+                answerText: answerText ?? "验收题目 \(ordinal) 的满分答案。",
+                keyPointsJSON: keyPointsJSON ?? "[\"核心定义\",\"适用边界\"]",
+                promptVersion: promptVersion ?? "acceptance-v1",
                 createdAt: now,
                 question: card
             )
