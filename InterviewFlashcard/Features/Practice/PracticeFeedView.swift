@@ -26,18 +26,20 @@ struct PracticeFeedView: View {
 
     @ViewBuilder
     private func cardFeed(_ card: QuestionCardSnapshot) -> some View {
-        VStack(spacing: 14) {
-            HStack {
-                Text("随机练习")
-                    .font(.headline)
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Label("随机练习", systemImage: "rectangle.stack.fill")
+                    .font(.headline.weight(.semibold))
                 Spacer()
                 Button(action: onOpenFilter) {
                     Label("筛选", systemImage: "line.3.horizontal.decrease.circle")
                 }
                 .labelStyle(.iconOnly)
+                .frame(width: 44, height: 44)
                 .accessibilityLabel("筛选")
                 .accessibilityIdentifier(PracticeAccessibilityID.filter)
             }
+            .frame(minHeight: 44)
 
             GeometryReader { proxy in
                 PracticeSwipeActionLayer(
@@ -50,30 +52,34 @@ struct PracticeFeedView: View {
                         }
                     }
                 ) {
-                    QuestionCardView(card: card, progressText: "")
+                    QuestionCardView(card: card)
                 }
             }
-            .frame(minHeight: 280)
+            .frame(minHeight: 340)
 
             Text("左滑跳过 · 右滑开始回答")
-                .font(.footnote)
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier(PracticeAccessibilityID.swipeHint)
 
             HStack(spacing: 12) {
                 Button(action: onSkip) {
-                    Label("跳过", systemImage: "arrow.uturn.right")
+                    Label("跳过", systemImage: "xmark")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .frame(minHeight: 48)
                 .disabled(isInteractionDisabled)
                 .accessibilityIdentifier(PracticeAccessibilityID.skip)
 
                 Button(action: onStartAnswer) {
-                    Label("开始回答", systemImage: "pencil.and.outline")
+                    Label("开始回答", systemImage: "arrow.right")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .frame(minHeight: 48)
                 .disabled(isInteractionDisabled)
                 .accessibilityIdentifier(PracticeAccessibilityID.answer)
             }
