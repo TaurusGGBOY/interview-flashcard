@@ -219,6 +219,21 @@ struct EvaluationRubric: Codable, Equatable, Sendable {
         ]
     )
 
+    /// Stable rubric used for all new practice evaluations. Keep the order in
+    /// lockstep with `ScoreDimension.allCases`; the order is part of the
+    /// persisted presentation contract.
+    static let seniorSoftwareEngineer = EvaluationRubric(
+        version: "senior-software-engineer-v2",
+        dimensions: [
+            .init(key: .correctness, weight: 35, fullScoreMeaning: "结论、事实和核心机制正确"),
+            .init(key: .coverage, weight: 25, fullScoreMeaning: "覆盖参考答案中的关键点和边界"),
+            .init(key: .reasoning, weight: 15, fullScoreMeaning: "解释因果、机制、边界和失败模式"),
+            .init(key: .structure, weight: 10, fullScoreMeaning: "回答结构清晰，便于面试口述和追问"),
+            .init(key: .tradeoffs, weight: 10, fullScoreMeaning: "给出应用场景、取舍和工程约束"),
+            .init(key: .precision, weight: 5, fullScoreMeaning: "术语准确、范围明确且表达简洁")
+        ]
+    )
+
     func total(for dimensions: [EvaluationDimension]) -> Int? {
         var scores: [ScoreDimension: Int] = [:]
         for dimension in dimensions {
@@ -253,7 +268,7 @@ struct EvaluationRequest: Codable, Equatable, Sendable {
         rawText: String,
         polishedText: String,
         introducedClaims: [IntroducedClaim],
-        rubric: EvaluationRubric = .general
+        rubric: EvaluationRubric = .seniorSoftwareEngineer
     ) {
         self.requestID = requestID
         self.question = question
@@ -305,4 +320,191 @@ struct EvaluationResponse: Codable, Equatable, Sendable {
     let promptVersion: String
     let rubricVersion: String
     let completionStatus: AICompletionStatus
+
+    init(
+        scorable: Bool,
+        notScorableReason: String?,
+        dimensions: [EvaluationDimension],
+        factualErrors: [FactualError],
+        strengths: [String],
+        gapsAndErrors: [String],
+        improvements: [String],
+        polishOnlyClaims: [String],
+        confidence: Double,
+        scoreRange: ScoreRange,
+        warnings: [String],
+        modelID: String,
+        promptVersion: String,
+        rubricVersion: String,
+        completionStatus: AICompletionStatus
+    ) {
+        self.scorable = scorable
+        self.notScorableReason = notScorableReason
+        self.dimensions = dimensions
+        self.factualErrors = factualErrors
+        self.strengths = strengths
+        self.gapsAndErrors = gapsAndErrors
+        self.improvements = improvements
+        self.polishOnlyClaims = polishOnlyClaims
+        self.confidence = confidence
+        self.scoreRange = scoreRange
+        self.warnings = warnings
+        self.modelID = modelID
+        self.promptVersion = promptVersion
+        self.rubricVersion = rubricVersion
+        self.completionStatus = completionStatus
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case scorable
+        case notScorableReason
+        case dimensions
+        case factualErrors
+        case strengths
+        case gapsAndErrors
+        case improvements
+        case polishOnlyClaims
+        case confidence
+        case scoreRange
+        case warnings
+        case modelID
+        case promptVersion
+        case rubricVersion
+        case completionStatus
+    }
+
+    /// DeepSeek occasionally emits a compact rubric shape such as
+    /// `{ "technicalCorrectness": 4, "evidence": ["..."] }` instead of
+    /// the documented `{ "key": "technicalCorrectness", "score": 80 }`.
+    /// Accept that response at the AI boundary so a valid model result is not
+    /// discarded; the canonical shape is still what the app persists.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        scorable = try container.decode(Bool.self, forKey: .scorable)
+        let decodedNotScorableReason = try container.decodeIfPresent(String.self, forKey: .notScorableReason)
+        notScorableReason = decodedNotScorableReason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
+            ? nil
+            : decodedNotScorableReason
+        dimensions = try container.decode([FlexibleEvaluationDimension].self, forKey: .dimensions).map(\.value)
+        factualErrors = try container.decode([FactualError].self, forKey: .factualErrors)
+        strengths = try container.decode([String].self, forKey: .strengths)
+        gapsAndErrors = try container.decode([String].self, forKey: .gapsAndErrors)
+        improvements = try container.decode([String].self, forKey: .improvements)
+        polishOnlyClaims = try container.decode([String].self, forKey: .polishOnlyClaims)
+        let decodedConfidence = try container.decode(Double.self, forKey: .confidence)
+        // Some providers return confidence as a percentage (for example 90)
+        // even when the contract asks for a 0...1 value. Normalize that
+        // harmless representation at the AI boundary before validation.
+        confidence = decodedConfidence > 1 && decodedConfidence <= 100
+            ? decodedConfidence / 100
+            : decodedConfidence
+        scoreRange = try container.decode(ScoreRange.self, forKey: .scoreRange)
+        warnings = try container.decode([String].self, forKey: .warnings)
+        modelID = try container.decode(String.self, forKey: .modelID)
+        promptVersion = try container.decode(String.self, forKey: .promptVersion)
+        rubricVersion = try container.decode(String.self, forKey: .rubricVersion)
+        completionStatus = try container.decode(AICompletionStatus.self, forKey: .completionStatus)
+    }
+}
+
+private struct FlexibleEvaluationDimension: Decodable {
+    let value: EvaluationDimension
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: AnyCodingKey.self)
+        let keyField = AnyCodingKey("key")
+        let scoreField = AnyCodingKey("score")
+
+        if let rawKey = try? container.decode(String.self, forKey: keyField),
+           let key = Self.canonicalDimension(rawKey),
+           let score = try? container.decode(Int.self, forKey: scoreField) {
+            let evidence = try container.decode([EvaluationEvidence].self, forKey: AnyCodingKey("evidence"))
+            let missedPoints = try container.decode([String].self, forKey: AnyCodingKey("missedPoints"))
+            let feedback = try container.decode(String.self, forKey: AnyCodingKey("feedback"))
+            value = EvaluationDimension(
+                key: key,
+                score: score,
+                evidence: evidence,
+                missedPoints: missedPoints,
+                feedback: feedback
+            )
+            return
+        }
+
+        guard let dimensionField = container.allKeys.first(where: {
+            Self.canonicalDimension($0.stringValue) != nil
+        }),
+        let key = Self.canonicalDimension(dimensionField.stringValue) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: keyField,
+                in: container,
+                debugDescription: "Evaluation dimension has no recognized key"
+            )
+        }
+
+        let rawScore = try container.decode(Int.self, forKey: dimensionField)
+        // Some responses use the common 1–5 rubric despite the prompt's
+        // 0–100 contract. Preserve that judgment on the canonical scale.
+        let normalizedScore = rawScore <= 5 ? rawScore * 20 : rawScore
+        let evidenceTexts = (try? container.decode([String].self, forKey: AnyCodingKey("evidence"))) ?? []
+        let evidence = evidenceTexts.map { EvaluationEvidence(quote: $0, explanation: "") }
+        let missedPoints = (try? container.decode([String].self, forKey: AnyCodingKey("missedPoints"))) ?? []
+        let feedback = (try? container.decode(String.self, forKey: AnyCodingKey("feedback"))) ?? ""
+        value = EvaluationDimension(
+            key: key,
+            score: normalizedScore,
+            evidence: evidence,
+            missedPoints: missedPoints,
+            feedback: feedback
+        )
+    }
+
+    private static func canonicalDimension(_ rawValue: String) -> ScoreDimension? {
+        if let canonical = ScoreDimension(rawValue: rawValue) {
+            return canonical
+        }
+
+        // DeepSeek sometimes substitutes a familiar six-part rubric for the
+        // app's canonical names. Keep the result usable while retaining the
+        // six-dimension invariant required by persistence and presentation.
+        switch rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "-", with: "") {
+        case "accuracy", "technicalaccuracy", "correctness":
+            return .correctness
+        case "completeness", "coverage", "keypointcoverage":
+            return .coverage
+        case "technicaldepth", "reasoning", "reasoningdepth", "depth":
+            return .reasoning
+        case "clarity", "structure", "structureclarity":
+            return .structure
+        case "tradeoffs", "application", "applicationtradeoffs", "codecorrectness", "implementation":
+            return .tradeoffs
+        case "conciseness", "precision", "precisionconciseness", "brevity":
+            return .precision
+        default:
+            return nil
+        }
+    }
+}
+
+private struct AnyCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init(_ stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(stringValue: String) {
+        self.init(stringValue)
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
+    }
 }

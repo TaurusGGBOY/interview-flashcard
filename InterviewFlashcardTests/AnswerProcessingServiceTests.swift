@@ -1,10 +1,9 @@
 import SwiftData
 import XCTest
-@testable import InterviewFlashcard
 
 final class AnswerProcessingServiceTests: XCTestCase {
     @MainActor
-    func testProcessingPersistsPolishAndSixScoresWithLocalTotal() async throws {
+    func testProcessingPersistsOneEvaluationAndSixScoresWithLocalTotal() async throws {
         let context = try TestModelContainer.make().mainContext
         let card = try Fixtures.makeCard(context: context)
         let attempt = try AnswerSubmissionService().submitText(
@@ -13,14 +12,32 @@ final class AnswerProcessingServiceTests: XCTestCase {
             context: context
         )
 
-        let evaluation = try await AnswerProcessingService(aiClient: RetryingAIClient(base: StubAIClient(), retryDelayNanoseconds: 0))
+        let client = RecordingAIClient()
+        let evaluation = try await AnswerProcessingService(aiClient: client)
             .process(attemptID: attempt.id, context: context)
 
+        let polishCallCount = await client.polishCallCount()
+        let evaluateCallCount = await client.evaluateCallCount()
+        let recordedRequest = await client.lastEvaluationRequest()
+        let request = try XCTUnwrap(recordedRequest)
+        XCTAssertEqual(polishCallCount, 0)
+        XCTAssertEqual(evaluateCallCount, 1)
+        XCTAssertEqual(request.rawText, request.polishedText)
+        XCTAssertTrue(request.introducedClaims.isEmpty)
         XCTAssertEqual(attempt.processingStatus, .completed)
-        XCTAssertEqual(attempt.polishResults.count, 1)
+        XCTAssertTrue(attempt.polishResults.isEmpty)
         XCTAssertEqual(attempt.evaluations.count, 1)
+        XCTAssertNil(evaluation.polishResultID)
         XCTAssertEqual(evaluation.totalScore, 75)
         XCTAssertEqual(evaluation.dimensionScores, DimensionScores(correctness: 80, coverage: 60, reasoning: 80, structure: 80, tradeoffs: 70, precision: 100))
+        let detail = try JSONDecoder().decode(
+            EvaluationDetailPayload.self,
+            from: Data(evaluation.feedbackJSON.utf8)
+        )
+        XCTAssertEqual(detail.schemaVersion, 2)
+        XCTAssertEqual(detail.dimensions.count, 6)
+        XCTAssertFalse(detail.gaps.isEmpty)
+        XCTAssertEqual(request.rubric.version, EvaluationRubric.seniorSoftwareEngineer.version)
     }
 
     @MainActor
@@ -37,7 +54,7 @@ final class AnswerProcessingServiceTests: XCTestCase {
         _ = try await AnswerProcessingService(aiClient: StubAIClient()).process(attemptID: attempt.id, context: context)
         XCTAssertEqual(attempt.processingStatus, .completed)
         XCTAssertEqual(attempt.evaluations.count, 1)
-        XCTAssertGreaterThanOrEqual(attempt.polishResults.count, 1)
+        XCTAssertTrue(attempt.polishResults.isEmpty)
     }
 
     @MainActor
@@ -51,5 +68,40 @@ final class AnswerProcessingServiceTests: XCTestCase {
         XCTAssertEqual(attempt.processingStatus, .failed)
         XCTAssertTrue(attempt.evaluations.isEmpty)
         XCTAssertNotNil(attempt.failureSummary)
+        XCTAssertTrue(attempt.polishResults.isEmpty)
     }
+}
+
+private actor RecordingAIClient: AIClient {
+    private let base = StubAIClient()
+    private var polishCalls = 0
+    private var evaluateCalls = 0
+    private var evaluationRequest: EvaluationRequest?
+
+    func decompose(_ request: DecomposeRequest) async throws -> DecomposeResponse {
+        try await base.decompose(request)
+    }
+
+    func refine(_ request: RefineRequest) async throws -> RefineResponse {
+        try await base.refine(request)
+    }
+
+    func reclassify(_ request: ReclassifyRequest) async throws -> ReclassifyResponse {
+        try await base.reclassify(request)
+    }
+
+    func polish(_ request: PolishRequest) async throws -> PolishResponse {
+        polishCalls += 1
+        return try await base.polish(request)
+    }
+
+    func evaluate(_ request: EvaluationRequest) async throws -> EvaluationResponse {
+        evaluateCalls += 1
+        evaluationRequest = request
+        return try await base.evaluate(request)
+    }
+
+    func polishCallCount() -> Int { polishCalls }
+    func evaluateCallCount() -> Int { evaluateCalls }
+    func lastEvaluationRequest() -> EvaluationRequest? { evaluationRequest }
 }

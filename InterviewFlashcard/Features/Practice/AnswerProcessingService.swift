@@ -31,8 +31,9 @@ struct AnswerProcessingService {
         self.diagnosticExporter = diagnosticExporter
     }
 
-    /// Runs polish first and then evaluation. Each run appends a new polish/evaluation
-    /// revision, so retry never overwrites the answer history.
+    /// Runs one direct evaluation request. The evaluator is told that text may be
+    /// an on-device speech transcript, so the answer history keeps the user's
+    /// submitted text and never creates a separate AI-polished revision.
     @discardableResult
     func process(attemptID: UUID, context: ModelContext) async throws -> EvaluationRecord {
         let descriptor = FetchDescriptor<AnswerAttemptRecord>(
@@ -43,37 +44,8 @@ struct AnswerProcessingService {
         }
 
         do {
-            attempt.processingStatus = .polishing
-            attempt.failureSummary = nil
-            try context.save()
-            try? diagnosticExporter?.export(from: context)
-
-            let polish = try await aiClient.polish(
-                PolishRequest(
-                    rawText: attempt.rawText,
-                    localeIdentifier: Locale.current.identifier,
-                    terminologyHints: []
-                )
-            )
-            try AIResponseValidator.validate(polish, rawText: attempt.rawText)
-
-            let polishRevision = (attempt.polishResults.map(\.revision).max() ?? 0) + 1
-            let polishRecord = PolishResultRecord(
-                revision: polishRevision,
-                inputText: attempt.rawText,
-                polishedText: polish.polishedText,
-                editSummaryJSON: try encoded(polish.edits),
-                suspectedASRErrorsJSON: try encoded(polish.suspectedTranscriptionIssues),
-                introducedClaimsJSON: try encoded(polish.introducedClaims),
-                needsUserReview: polish.needsUserReview,
-                promptVersion: polish.promptVersion,
-                modelID: polish.modelID,
-                createdAt: now(),
-                attempt: attempt
-            )
-            context.insert(polishRecord)
-
             attempt.processingStatus = .evaluating
+            attempt.failureSummary = nil
             try context.save()
             try? diagnosticExporter?.export(from: context)
 
@@ -82,16 +54,19 @@ struct AnswerProcessingService {
                     question: attempt.questionTextSnapshot,
                     referenceAnswer: attempt.referenceAnswerTextSnapshot,
                     rawText: attempt.rawText,
-                    polishedText: polish.polishedText,
-                    introducedClaims: polish.introducedClaims,
-                    rubric: .general
+                    // Keep the legacy request fields populated for wire/schema
+                    // compatibility. The v2 evaluation prompt treats rawText as
+                    // the sole source of answer evidence.
+                    polishedText: attempt.rawText,
+                    introducedClaims: [],
+                    rubric: .seniorSoftwareEngineer
                 )
             )
             try AIResponseValidator.validate(
                 evaluation,
-                rubric: EvaluationRubric.general,
+                rubric: EvaluationRubric.seniorSoftwareEngineer,
                 rawText: attempt.rawText,
-                polishedText: polish.polishedText
+                polishedText: attempt.rawText
             )
 
             let scores = DimensionScores(
@@ -102,18 +77,17 @@ struct AnswerProcessingService {
                 tradeoffs: evaluation.score(for: .tradeoffs),
                 precision: evaluation.score(for: .precision)
             )
-            let total = evaluation.scorable ? EvaluationRubric.general.total(for: evaluation.dimensions) : nil
+            let total = evaluation.scorable
+                ? EvaluationRubric.seniorSoftwareEngineer.total(for: evaluation.dimensions)
+                : nil
+            let detailPayload = EvaluationDetailPayload(evaluation: evaluation)
             let evaluationRecord = EvaluationRecord(
                 totalScore: total,
                 scores: scores,
                 strengthsJSON: try encoded(evaluation.strengths),
                 nextAnswerPlanJSON: try encoded(evaluation.improvements),
                 factualErrorsJSON: try encoded(evaluation.factualErrors),
-                feedbackJSON: try encoded(
-                    evaluation.dimensions.reduce(into: [String: String]()) { result, dimension in
-                        result[dimension.key.rawValue] = dimension.feedback
-                    }
-                ),
+                feedbackJSON: try encoded(detailPayload),
                 confidence: String(format: "%.2f", evaluation.confidence),
                 status: .completed,
                 provider: "deepseek-compatible",
@@ -122,7 +96,7 @@ struct AnswerProcessingService {
                 rubricVersion: evaluation.rubricVersion,
                 createdAt: now(),
                 attempt: attempt,
-                polishResultID: polishRecord.id
+                polishResultID: nil
             )
             context.insert(evaluationRecord)
             attempt.processingStatus = .completed

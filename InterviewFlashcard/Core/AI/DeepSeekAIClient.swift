@@ -83,13 +83,44 @@ struct DeepSeekAIClient: AIClient {
 
     func evaluate(_ request: EvaluationRequest) async throws -> EvaluationResponse {
         let response: EvaluationResponse = try await perform(.evaluate, payload: request)
+        // Validate the model's own metadata before canonicalizing it. A model
+        // that answers with another prompt/rubric must not be silently accepted.
         try AIResponseValidator.validate(
             response,
             rubric: request.rubric,
             rawText: request.rawText,
-            polishedText: request.polishedText
+            polishedText: request.polishedText,
+            expectedPromptVersion: PromptCatalog.evaluateVersion
         )
-        return response
+        // Metadata is part of the client contract, not a model judgment. A
+        // provider can occasionally echo a training-example model name (for
+        // example `gpt-4o`), so persist the configured endpoint model and the
+        // exact prompt version used by this client.
+        let canonicalResponse = EvaluationResponse(
+            scorable: response.scorable,
+            notScorableReason: response.notScorableReason,
+            dimensions: response.dimensions,
+            factualErrors: response.factualErrors,
+            strengths: response.strengths,
+            gapsAndErrors: response.gapsAndErrors,
+            improvements: response.improvements,
+            polishOnlyClaims: response.polishOnlyClaims,
+            confidence: response.confidence,
+            scoreRange: response.scoreRange,
+            warnings: response.warnings,
+            modelID: configuration.model,
+            promptVersion: PromptCatalog.evaluateVersion,
+            rubricVersion: request.rubric.version,
+            completionStatus: response.completionStatus
+        )
+        try AIResponseValidator.validate(
+            canonicalResponse,
+            rubric: request.rubric,
+            rawText: request.rawText,
+            polishedText: request.polishedText,
+            expectedPromptVersion: PromptCatalog.evaluateVersion
+        )
+        return canonicalResponse
     }
 
     private func perform<Request: Encodable, Response: Decodable>(

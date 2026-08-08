@@ -17,6 +17,8 @@ enum AIResponseValidationError: Error, Equatable, Sendable {
     case evidenceNotFound(String)
     case polishOnlyEvidenceCredited(ScoreDimension, String)
     case invalidScorableState
+    case promptVersionMismatch(expected: String, actual: String)
+    case rubricVersionMismatch(expected: String, actual: String)
 }
 
 enum AIResponseValidator {
@@ -114,7 +116,8 @@ enum AIResponseValidator {
         _ response: EvaluationResponse,
         rubric: EvaluationRubric,
         rawText: String,
-        polishedText: String
+        polishedText: String,
+        expectedPromptVersion: String = PromptCatalog.evaluateVersion
     ) throws {
         try requireComplete(response.completionStatus)
         let expectedDimensions = Set(rubric.dimensions.map(\.key))
@@ -123,14 +126,33 @@ enum AIResponseValidator {
               expectedDimensions.count == rubric.dimensions.count else {
             throw AIResponseValidationError.invalidRubricWeights
         }
+        guard response.promptVersion == expectedPromptVersion else {
+            throw AIResponseValidationError.promptVersionMismatch(
+                expected: expectedPromptVersion,
+                actual: response.promptVersion
+            )
+        }
+        guard response.rubricVersion == rubric.version else {
+            throw AIResponseValidationError.rubricVersionMismatch(
+                expected: rubric.version,
+                actual: response.rubricVersion
+            )
+        }
         try validateEvaluation(
             response,
             expectedDimensions: expectedDimensions,
             rawText: rawText,
             polishedText: polishedText
         )
-        guard response.rubricVersion == rubric.version else {
-            throw AIResponseValidationError.emptyField("evaluation.rubricVersion")
+        guard response.scorable else {
+            return
+        }
+        guard let total = rubric.total(for: response.dimensions) else {
+            throw AIResponseValidationError.invalidScorableState
+        }
+        if total != 100 {
+            try requireNonEmptyList(response.gapsAndErrors, field: "evaluation.gapsAndErrors")
+            try requireNonEmptyList(response.improvements, field: "evaluation.improvements")
         }
     }
 
@@ -166,6 +188,15 @@ enum AIResponseValidator {
             throw AIResponseValidationError.invalidScoreRange
         }
 
+        try requireText(response.modelID, field: "evaluation.modelID")
+        try requireText(response.promptVersion, field: "evaluation.promptVersion")
+        try requireText(response.rubricVersion, field: "evaluation.rubricVersion")
+        for (index, error) in response.factualErrors.enumerated() {
+            try requireText(error.statement, field: "evaluation.factualErrors[\(index)].statement")
+            try requireText(error.explanation, field: "evaluation.factualErrors[\(index)].explanation")
+            try requireText(error.referenceBasis, field: "evaluation.factualErrors[\(index)].referenceBasis")
+        }
+
         if !response.scorable {
             guard response.dimensions.isEmpty,
                   !(response.notScorableReason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) else {
@@ -188,28 +219,32 @@ enum AIResponseValidator {
             guard (0...100).contains(dimension.score) else {
                 throw AIResponseValidationError.scoreOutOfRange(dimension.key, dimension.score)
             }
+            try requireText(dimension.feedback, field: "evaluation.feedback.\(dimension.key.rawValue)")
             guard !dimension.evidence.isEmpty else {
                 throw AIResponseValidationError.emptyField("evaluation.evidence.\(dimension.key.rawValue)")
             }
             for evidence in dimension.evidence {
                 try requireText(evidence.quote, field: "evaluation.evidence.quote")
-                guard contains(rawText, quote: evidence.quote) || contains(polishedText, quote: evidence.quote) else {
+                try requireText(evidence.explanation, field: "evaluation.evidence.explanation")
+                guard contains(rawText, quote: evidence.quote) else {
+                    if (dimension.key == .correctness || dimension.key == .coverage),
+                       contains(polishedText, quote: evidence.quote) {
+                        throw AIResponseValidationError.polishOnlyEvidenceCredited(dimension.key, evidence.quote)
+                    }
                     throw AIResponseValidationError.evidenceNotFound(evidence.quote)
                 }
-                if dimension.score > 0,
-                   (dimension.key == .correctness || dimension.key == .coverage),
-                   !contains(rawText, quote: evidence.quote) {
-                    throw AIResponseValidationError.polishOnlyEvidenceCredited(dimension.key, evidence.quote)
-                }
+            }
+            if dimension.score < 100 {
+                try requireNonEmptyList(
+                    dimension.missedPoints,
+                    field: "evaluation.missedPoints.\(dimension.key.rawValue)"
+                )
             }
         }
 
         for missing in expectedDimensions.subtracting(seen) {
             throw AIResponseValidationError.missingDimension(missing)
         }
-        try requireText(response.modelID, field: "evaluation.modelID")
-        try requireText(response.promptVersion, field: "evaluation.promptVersion")
-        try requireText(response.rubricVersion, field: "evaluation.rubricVersion")
     }
 
     private static func validateAnchors(
@@ -249,13 +284,28 @@ enum AIResponseValidator {
         }
     }
 
+    private static func requireNonEmptyList(_ values: [String], field: String) throws {
+        guard values.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            throw AIResponseValidationError.emptyField(field)
+        }
+    }
+
     private static func contains(_ text: String, quote: String) -> Bool {
-        let normalizedText = text.precomposedStringWithCanonicalMapping
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let normalizedQuote = quote.precomposedStringWithCanonicalMapping
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedText = normalizeEvidence(text)
+        let normalizedQuote = normalizeEvidence(quote)
         return !normalizedQuote.isEmpty && normalizedText.contains(normalizedQuote)
+    }
+
+    private static func normalizeEvidence(_ text: String) -> String {
+        let punctuationMap: [Character: Character] = [
+            "，": ",", "。": ".", "！": "!", "？": "?", "：": ":", "；": ";",
+            "（": "(", "）": ")", "【": "[", "】": "]", "“": "\"", "”": "\"",
+            "‘": "'", "’": "'"
+        ]
+        let mapped = String(text.map { punctuationMap[$0] ?? $0 })
+        let folded = mapped.precomposedStringWithCanonicalMapping
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        return folded.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }
 
