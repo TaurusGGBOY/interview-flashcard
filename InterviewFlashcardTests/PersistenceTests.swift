@@ -57,6 +57,22 @@ final class PersistenceTests: XCTestCase {
     }
 
     @MainActor
+    func testLegacyQuestionNumberBackfillPersistsAssignedNumber() throws {
+        let context = try TestModelContainer.make().mainContext
+        let card = try Fixtures.makeCard(context: context)
+        XCTAssertNil(card.questionNumber)
+
+        try QuestionNumberingService().backfillIfNeeded(context: context)
+        try context.save()
+
+        let persistedCard = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<QuestionCardRecord>())
+                .first(where: { $0.id == card.id })
+        )
+        XCTAssertEqual(persistedCard.questionNumber, 1)
+    }
+
+    @MainActor
     func testDiagnosticsFetchesPersistedStateWithoutSecretFields() throws {
         let context = try TestModelContainer.make().mainContext
         _ = try Fixtures.makeCard(context: context)
@@ -85,6 +101,17 @@ final class PersistenceTests: XCTestCase {
         XCTAssertThrowsError(try AcceptanceSeeder.seed(named: "empty", context: context)) { error in
             XCTAssertEqual(error as? AcceptanceSeeder.SeedError, .storeIsNotEmpty)
         }
+    }
+
+    @MainActor
+    func testAcceptanceSeederAssignsStableQuestionNumbers() throws {
+        let context = try TestModelContainer.make().mainContext
+        try AppModelContainer.bootstrapOthers(context: context, now: Fixtures.now)
+
+        try AcceptanceSeeder.seed(named: "practice-mixed", context: context)
+
+        let cards = try context.fetch(FetchDescriptor<QuestionCardRecord>())
+        XCTAssertEqual(cards.compactMap(\.questionNumber).sorted(), [1, 2, 3, 4])
     }
     #endif
 }

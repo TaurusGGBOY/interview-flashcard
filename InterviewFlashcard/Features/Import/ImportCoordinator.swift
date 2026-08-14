@@ -520,10 +520,12 @@ final class ImportCoordinator {
         try saveAndExport()
 
         let timestamp = now()
+        var nextQuestionNumber = try QuestionNumberingService().nextNumber(context: context)
         for plan in activationPlans {
             let candidate = plan.candidate
             let topic = candidate.proposedTopicName.flatMap { topicByName[$0] } ?? others
             let card = QuestionCardRecord(
+                questionNumber: nextQuestionNumber,
                 questionText: candidate.questionText,
                 sourceAnchor: candidate.sourceAnchor,
                 createdAt: timestamp,
@@ -533,6 +535,7 @@ final class ImportCoordinator {
                 sourceDocument: run.sourceDocument
             )
             context.insert(card)
+            nextQuestionNumber += 1
             context.insert(
                 ReferenceAnswerVersionRecord(
                     version: 1,

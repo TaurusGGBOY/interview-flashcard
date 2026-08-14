@@ -4,6 +4,7 @@ import SwiftData
 @Model
 final class QuestionCardRecord {
     @Attribute(.unique) var id: UUID
+    var questionNumber: Int?
     var questionText: String
     var sourceAnchor: String
     var createdAt: Date
@@ -23,6 +24,7 @@ final class QuestionCardRecord {
 
     init(
         id: UUID = UUID(),
+        questionNumber: Int? = nil,
         questionText: String,
         sourceAnchor: String,
         createdAt: Date = Date(),
@@ -33,6 +35,7 @@ final class QuestionCardRecord {
         sourceDocument: SourceDocumentRecord
     ) {
         self.id = id
+        self.questionNumber = questionNumber
         self.questionText = questionText
         self.sourceAnchor = sourceAnchor
         self.createdAt = createdAt

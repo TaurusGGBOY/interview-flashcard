@@ -22,10 +22,19 @@ final class ImportCoordinatorTests: XCTestCase {
 
         let runs = try context.fetch(FetchDescriptor<ImportRunRecord>())
         let cards = try context.fetch(FetchDescriptor<QuestionCardRecord>())
+        let orderedCandidates = try XCTUnwrap(runs.first(where: { $0.id == runID }))
+            .chunks
+            .flatMap(\.candidates)
+            .sorted { $0.sourceOrder < $1.sourceOrder }
+        let cardsByAnchor = Dictionary(uniqueKeysWithValues: cards.map { ($0.sourceAnchor, $0) })
         XCTAssertEqual(runs.first(where: { $0.id == runID })?.status, .active)
         XCTAssertEqual(cards.count, 3)
         XCTAssertTrue(cards.allSatisfy { $0.topic.systemKind == .others })
         XCTAssertTrue(cards.allSatisfy { !$0.referenceAnswers.isEmpty && !$0.sourceAnchor.isEmpty })
+        XCTAssertEqual(
+            orderedCandidates.compactMap { cardsByAnchor[$0.sourceAnchor]?.questionNumber },
+            [1, 2, 3]
+        )
         for card in cards {
             let reference = try XCTUnwrap(card.referenceAnswers.first)
             let data = try XCTUnwrap(reference.keyPointsJSON.data(using: .utf8))

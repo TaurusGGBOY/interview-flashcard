@@ -304,6 +304,7 @@ enum AcceptanceSeeder {
     ) -> QuestionCardRecord {
         let card = QuestionCardRecord(
             id: stableUUID(namespace: 3, ordinal: ordinal),
+            questionNumber: ordinal,
             questionText: questionText ?? "验收题目 \(ordinal)：请解释该技术概念。",
             sourceAnchor: sourceAnchor ?? "acceptance-fixture.md#question-\(ordinal)",
             createdAt: now,

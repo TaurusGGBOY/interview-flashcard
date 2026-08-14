@@ -67,6 +67,8 @@ public final class AppRuntime {
                 context: context,
                 now: environment.dependencies.now()
             )
+            try QuestionNumberingService().backfillIfNeeded(context: context)
+            try context.save()
             #if DEBUG
             if let fixture = environment.launchOptions.seedFixture {
                 try AcceptanceSeeder.seed(named: fixture, context: context)
