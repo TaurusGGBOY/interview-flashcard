@@ -10,6 +10,17 @@ enum AccessibilityID {
     static let settingsSaveKey = "settings.save-key"
     static let settingsClearKey = "settings.clear-key"
     static let settingsMessage = "settings.message"
+    static let settingsAIService = "settings.ai-service"
+    static let settingsAIServiceScreen = "settings.ai-service.screen"
+    static let settingsAIProvider = "settings.ai-service.provider"
+    static let settingsAIBaseURL = "settings.ai-service.base-url"
+    static let settingsAITestConnection = "settings.ai-service.test"
+    static let settingsAISave = "settings.ai-service.save"
+    static let settingsAIMessage = "settings.ai-service.message"
+    static let settingsPractice = "settings.practice"
+    static let settingsPracticeScreen = "settings.practice.screen"
+    static let settingsAIServiceRow = "settings.ai-service.row"
+    static let settingsPracticeRow = "settings.practice.row"
 
     static func rootTab(_ route: AppRoute) -> String {
         "\(rootTabPrefix).\(route.rawValue)"

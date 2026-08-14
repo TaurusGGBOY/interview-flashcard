@@ -1,90 +1,106 @@
+import SwiftData
 import SwiftUI
 
 struct SettingsView: View {
+    @Query(sort: \TopicRecord.createdAt) private var topics: [TopicRecord]
     @Environment(AppEnvironment.self) private var environment
-    @State private var apiKey = ""
-    @State private var model = ""
-    @State private var message: String?
 
     var body: some View {
-        Form {
-            Section("DeepSeek") {
-                SecureField("API Key", text: $apiKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier(AccessibilityID.settingsAPIKey)
-
-                TextField("模型", text: $model)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier(AccessibilityID.settingsModel)
-
-                HStack {
-                    Label(
-                        environment.apiKeyConfigured ? "API Key 已配置" : "API Key 未配置",
-                        systemImage: environment.apiKeyConfigured ? "checkmark.seal.fill" : "exclamationmark.triangle"
+        List {
+            Section("功能设置") {
+                NavigationLink {
+                    AIServiceSettingsView()
+                } label: {
+                    SettingsNavigationRow(
+                        title: "AI 服务",
+                        systemImage: "sparkles",
+                        summary: aiServiceSummary
                     )
-                    .foregroundStyle(environment.apiKeyConfigured ? .green : .secondary)
-                    Spacer()
-                    Button("保存") {
-                        save()
-                    }
-                    .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier(AccessibilityID.settingsSaveKey)
                 }
+                .accessibilityIdentifier(AccessibilityID.settingsAIServiceRow)
 
-                Button("清除 API Key", role: .destructive) {
-                    clear()
+                NavigationLink {
+                    PracticeSettingsView()
+                } label: {
+                    SettingsNavigationRow(
+                        title: "练习设置",
+                        systemImage: "slider.horizontal.3",
+                        summary: practiceSettingsSummary
+                    )
                 }
-                .disabled(!environment.apiKeyConfigured)
-                .accessibilityIdentifier(AccessibilityID.settingsClearKey)
-
-                if let message {
-                    Text(message)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier(AccessibilityID.settingsMessage)
-                }
+                .accessibilityIdentifier(AccessibilityID.settingsPracticeRow)
             }
 
-            Section("隐私") {
-                Text("Markdown 和你确认提交的文字回答可能会发送给 DeepSeek 用于题目整理、作答润色和评分。语音音频只保存在本机，永不上传；语音必须先在设备端完成本地转写。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            Section("安全与隐私") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("数据由你掌控", systemImage: "lock.shield.fill")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("API Key 仅保存在设备的系统钥匙串中，不写入普通设置或诊断信息。题目整理和评分只会把你确认提交的文字发送给当前配置的 AI 服务。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
             }
         }
         .navigationTitle("设置")
         .accessibilityIdentifier(AccessibilityID.settingsScreen)
         .task {
-            model = environment.configuredModel
-            environment.refreshAPIKeyState()
-        }
-        .onChange(of: model) { _, newValue in
-            environment.configuredModel = newValue
+            environment.refreshAIConfiguration()
+            environment.reconcilePracticeSettings(validTopicIDs: validTopicIDs)
         }
     }
 
-    private func save() {
-        do {
-            try environment.saveAPIKey(apiKey)
-            apiKey = ""
-            message = "已保存（仅存储在本机 Keychain）"
-        } catch {
-            message = "保存失败：\(error.localizedDescription)"
-        }
+    private var validTopicIDs: Set<UUID> {
+        Set(topics.map(\.id))
     }
 
-    private func clear() {
-        do {
-            try environment.clearAPIKey()
-            message = "已清除 API Key"
-        } catch {
-            message = "清除失败：\(error.localizedDescription)"
+    private var aiServiceSummary: String {
+        let provider = environment.aiConfiguration.provider.displayName
+        let keyStatus = environment.apiKeyConfigured ? "密钥已配置" : "密钥未配置"
+        return "\(provider) · \(keyStatus)"
+    }
+
+    private var practiceSettingsSummary: String {
+        guard !validTopicIDs.isEmpty else { return "暂无主题" }
+        let count = environment.practiceSettings
+            .resolvedTopicIDs(validTopicIDs: validTopicIDs)
+            .count
+        if count == validTopicIDs.count {
+            return "全部主题"
         }
+        return "\(count)/\(validTopicIDs.count) 个主题"
+    }
+}
+
+private struct SettingsNavigationRow: View {
+    let title: String
+    let systemImage: String
+    let summary: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                Text(summary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.tint)
+        }
+        .padding(.vertical, 3)
     }
 }
 
 #Preview {
-    SettingsView()
-        .environment(AppEnvironment())
+    NavigationStack {
+        SettingsView()
+    }
+    .environment(AppEnvironment())
+    .modelContainer(try! AppModelContainer.make(inMemory: true))
 }
