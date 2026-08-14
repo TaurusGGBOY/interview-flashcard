@@ -3,6 +3,14 @@ import SwiftData
 
 @MainActor
 struct TopicService {
+    struct TopicDeletionImpact: Equatable, Sendable {
+        let topicID: UUID
+        let questionCount: Int
+        let answerCount: Int
+        let evaluationCount: Int
+        let audioCount: Int
+    }
+
     enum ServiceError: LocalizedError, Equatable {
         case emptyName
         case duplicateName(String)
@@ -30,9 +38,14 @@ struct TopicService {
     }
 
     private let diagnosticExporter: DiagnosticStateExporter?
+    private let removeAudio: TrashService.RemoveAudio
 
-    init(diagnosticExporter: DiagnosticStateExporter? = nil) {
+    init(
+        diagnosticExporter: DiagnosticStateExporter? = nil,
+        removeAudio: @escaping TrashService.RemoveAudio = TrashService.removeAudioFile
+    ) {
         self.diagnosticExporter = diagnosticExporter
+        self.removeAudio = removeAudio
     }
 
     @discardableResult
@@ -99,6 +112,39 @@ struct TopicService {
         exportDiagnostics(from: context)
     }
 
+    func deletionImpact(
+        for topic: TopicRecord,
+        context: ModelContext
+    ) throws -> TopicDeletionImpact {
+        let topic = try deletablePersistedTopic(topic, context: context)
+        let attempts = topic.cards.flatMap(\.attempts)
+        return TopicDeletionImpact(
+            topicID: topic.id,
+            questionCount: topic.cards.count,
+            answerCount: attempts.count,
+            evaluationCount: attempts.reduce(0) { $0 + $1.evaluations.count },
+            audioCount: attempts.reduce(0) { $0 + ($1.audioAsset == nil ? 0 : 1) }
+        )
+    }
+
+    func permanentlyDelete(
+        topic: TopicRecord,
+        context: ModelContext
+    ) throws {
+        let topic = try deletablePersistedTopic(topic, context: context)
+        let audioPaths = topic.cards
+            .flatMap(\.attempts)
+            .compactMap(\.audioAsset?.relativePath)
+
+        context.delete(topic)
+        try context.save()
+        exportDiagnostics(from: context)
+
+        for path in audioPaths {
+            try removeAudio(path)
+        }
+    }
+
     func deletionDestinations(
         for topic: TopicRecord,
         context: ModelContext
@@ -156,6 +202,29 @@ struct TopicService {
         guard try context.fetchCount(descriptor) == 1 else {
             throw ServiceError.topicNotFound
         }
+    }
+
+    private func deletablePersistedTopic(
+        _ topic: TopicRecord,
+        context: ModelContext
+    ) throws -> TopicRecord {
+        guard topic.systemKindRaw == nil else {
+            throw ServiceError.systemTopicIsImmutable
+        }
+
+        let topicID = topic.id
+        let descriptor = FetchDescriptor<TopicRecord>(
+            predicate: #Predicate { candidate in
+                candidate.id == topicID
+            }
+        )
+        guard let persistedTopic = try context.fetch(descriptor).first else {
+            throw ServiceError.topicNotFound
+        }
+        guard persistedTopic.systemKindRaw == nil else {
+            throw ServiceError.systemTopicIsImmutable
+        }
+        return persistedTopic
     }
 
     private func exportDiagnostics(from context: ModelContext) {

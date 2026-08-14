@@ -4,6 +4,25 @@ import XCTest
 @testable import InterviewFlashcard
 
 final class TrashServiceTests: XCTestCase {
+    func testExposedAudioCleanupRemovesStoredFile() throws {
+        let fileManager = FileManager.default
+        let relativePath = "trash-service-tests/\(UUID().uuidString).m4a"
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("InterviewFlashcard", isDirectory: true)
+        let fileURL = base.appendingPathComponent(relativePath)
+        try fileManager.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("fixture".utf8).write(to: fileURL)
+        defer { try? fileManager.removeItem(at: fileURL.deletingLastPathComponent()) }
+
+        let cleanup: TrashService.RemoveAudio = TrashService.removeAudioFile
+        try cleanup(relativePath)
+
+        XCTAssertFalse(fileManager.fileExists(atPath: fileURL.path))
+    }
+
     @MainActor
     func testTrashHidesAndRestoreRecoversCardWithHistory() throws {
         let context = try TestModelContainer.make().mainContext

@@ -84,7 +84,7 @@ struct TrashService {
         return card
     }
 
-    nonisolated private static func removeAudioFile(_ relativePath: String) throws {
+    nonisolated static func removeAudioFile(_ relativePath: String) throws {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("InterviewFlashcard", isDirectory: true)
         let url = base.appendingPathComponent(relativePath)
