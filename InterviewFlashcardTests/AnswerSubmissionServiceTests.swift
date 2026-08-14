@@ -1,6 +1,5 @@
 import SwiftData
 import XCTest
-@testable import InterviewFlashcard
 
 final class AnswerSubmissionServiceTests: XCTestCase {
     @MainActor
@@ -26,6 +25,7 @@ final class AnswerSubmissionServiceTests: XCTestCase {
         XCTAssertEqual(attempt.referenceAnswerVersion, 1)
         XCTAssertEqual(recorder.ids, [attempt.id])
         XCTAssertEqual(try context.fetch(FetchDescriptor<AnswerAttemptRecord>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<AudioAssetRecord>()).count, 0)
     }
 
     @MainActor
@@ -43,6 +43,23 @@ final class AnswerSubmissionServiceTests: XCTestCase {
             XCTAssertEqual(error as? AnswerSubmissionService.SubmissionError, .questionNotFound)
         }
         XCTAssertEqual(try context.fetch(FetchDescriptor<AnswerAttemptRecord>()).count, 0)
+    }
+
+    @MainActor
+    func testSubmissionDoesNotWaitForMissingReferenceAnswer() throws {
+        let context = try TestModelContainer.make().mainContext
+        let card = try Fixtures.makeCard(context: context, includeReferenceAnswer: false)
+
+        let attempt = try AnswerSubmissionService().submitText(
+            questionID: card.id,
+            rawText: "先给出核心机制，再说明边界。",
+            context: context
+        )
+
+        XCTAssertEqual(attempt.referenceAnswerVersion, 0)
+        XCTAssertTrue(attempt.referenceAnswerTextSnapshot.isEmpty)
+        XCTAssertEqual(attempt.processingStatus, .saved)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<AudioAssetRecord>()).count, 0)
     }
 }
 

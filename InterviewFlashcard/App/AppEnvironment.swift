@@ -9,27 +9,21 @@ public final class AppEnvironment {
         static let aiProvider = "settings.ai.provider"
     }
 
-    struct LaunchOptions: Equatable, Sendable {
+    public struct LaunchOptions: Equatable, Sendable {
         enum AIProvider: String, Sendable {
             case stub
             case deepseek
         }
 
-        enum SpeechCapabilityOverride: String, Sendable {
-            case automatic
-            case supported
-            case fixtureSupported = "fixture-supported"
-            case unsupported
-            case denied
-            case permissionDenied = "permission-denied"
-        }
-
         var diagnosticsEnabled: Bool
         var aiProvider: AIProvider
         var stubMode: String
-        var speechCapability: SpeechCapabilityOverride
         var seedFixture: String?
         var randomSeed: UInt64?
+        var acceptanceImportFile: String?
+        var acceptanceContinueRunID: UUID?
+        var acceptanceConfirmRunID: UUID?
+        public var keepAwakeWhileConnected: Bool
 
         static func current(
             arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -43,68 +37,92 @@ public final class AppEnvironment {
                 return arguments[index + 1]
             }
 
-            #if DEBUG
+#if DEBUG
+            let persistedProvider = AIProvider(rawValue: userDefaults.string(forKey: SettingsKey.aiProvider) ?? "")
             let provider = AIProvider(rawValue: valueAfter("-IFAIProvider") ?? "")
                 ?? AIProvider(rawValue: environment["IF_DEFAULT_AI_PROVIDER"] ?? "")
-                ?? AIProvider(rawValue: userDefaults.string(forKey: SettingsKey.aiProvider) ?? "")
-                ?? .stub
-            let speech = SpeechCapabilityOverride(rawValue: valueAfter("-IFSpeechCapability") ?? "") ?? .automatic
+                // A prior deterministic acceptance run may have persisted
+                // "stub". Never let an icon launch silently reuse that mode.
+                ?? (persistedProvider == .deepseek ? persistedProvider : nil)
+                ?? .deepseek
             return LaunchOptions(
                 diagnosticsEnabled: valueAfter("-IFDiagnosticsEnabled") == "YES",
                 aiProvider: provider,
                 stubMode: valueAfter("-IFStubMode") ?? "success",
-                speechCapability: speech,
                 seedFixture: valueAfter("-IFSeedFixture"),
-                randomSeed: valueAfter("-IFRandomSeed").flatMap(UInt64.init)
+                randomSeed: valueAfter("-IFRandomSeed").flatMap(UInt64.init),
+                acceptanceImportFile: valueAfter("-IFAcceptanceImportFile"),
+                acceptanceContinueRunID: valueAfter("-IFAcceptanceContinueRunID").flatMap(UUID.init(uuidString:)),
+                acceptanceConfirmRunID: valueAfter("-IFAcceptanceConfirmRunID").flatMap(UUID.init(uuidString:)),
+                keepAwakeWhileConnected: valueAfter("-IFKeepAwake") == "YES"
             )
             #else
             return LaunchOptions(
                 diagnosticsEnabled: false,
                 aiProvider: .deepseek,
                 stubMode: "success",
-                speechCapability: .automatic,
                 seedFixture: nil,
-                randomSeed: nil
+                randomSeed: nil,
+                acceptanceImportFile: nil,
+                acceptanceContinueRunID: nil,
+                acceptanceConfirmRunID: nil,
+                keepAwakeWhileConnected: false
             )
             #endif
         }
     }
 
     struct Dependencies: Sendable {
-        typealias MakeAudioRecorder = @Sendable () -> any AudioRecording
-
         var now: @Sendable () -> Date
         var aiClient: any AIClient
         var apiKeyStore: any APIKeyStore
-        var speechTranscriber: any SpeechTranscribing
-        var makeAudioRecorder: MakeAudioRecorder
+        var aiConfigurationStore: any AIConfigurationStore
+        var aiConnectionTester: any AIConnectionTesting
+        var practiceSettingsStore: any PracticeSettingsStore
 
         init(
             now: @escaping @Sendable () -> Date,
             aiClient: any AIClient,
             apiKeyStore: any APIKeyStore,
-            speechTranscriber: any SpeechTranscribing = AppleSpeechTranscriber(),
-            makeAudioRecorder: @escaping MakeAudioRecorder = { M4AAudioRecorder() }
+            aiConfigurationStore: any AIConfigurationStore,
+            aiConnectionTester: any AIConnectionTesting,
+            practiceSettingsStore: any PracticeSettingsStore = InMemoryPracticeSettingsStore()
         ) {
             self.now = now
             self.aiClient = aiClient
             self.apiKeyStore = apiKeyStore
-            self.speechTranscriber = speechTranscriber
-            self.makeAudioRecorder = makeAudioRecorder
+            self.aiConfigurationStore = aiConfigurationStore
+            self.aiConnectionTester = aiConnectionTester
+            self.practiceSettingsStore = practiceSettingsStore
         }
 
-        static let live = Dependencies(
-            now: { Date() },
-            aiClient: StubAIClient(),
-            apiKeyStore: KeychainAPIKeyStore(),
-            speechTranscriber: AppleSpeechTranscriber(),
-            makeAudioRecorder: { M4AAudioRecorder() }
-        )
+        static let live: Dependencies = {
+            let apiKeyStore = KeychainAPIKeyStore()
+            let configurationStore = UserDefaultsAIConfigurationStore()
+            let transport = URLSessionAIHTTPTransport()
+            return Dependencies(
+                now: { Date() },
+                aiClient: RetryingAIClient(
+                    base: DynamicAIClientRouter(
+                        configurationStore: configurationStore,
+                        apiKeyStore: apiKeyStore,
+                        transport: transport
+                    )
+                ),
+                apiKeyStore: apiKeyStore,
+                aiConfigurationStore: configurationStore,
+                aiConnectionTester: AIConnectionTester(transport: transport),
+                practiceSettingsStore: UserDefaultsPracticeSettingsStore()
+            )
+        }()
     }
 
-    let launchOptions: LaunchOptions
+    public let launchOptions: LaunchOptions
     let dependencies: Dependencies
+    @ObservationIgnored var importCoordinator: ImportCoordinator?
     private(set) var apiKeyConfigured = false
+    private(set) var aiConfiguration: AIProviderConfiguration
+    private(set) var practiceSettings: PracticeSettingsSnapshot
 
     init(
         launchOptions: LaunchOptions = .current(),
@@ -112,6 +130,8 @@ public final class AppEnvironment {
     ) {
         self.launchOptions = launchOptions
         self.dependencies = dependencies
+        aiConfiguration = dependencies.aiConfigurationStore.load()
+        practiceSettings = dependencies.practiceSettingsStore.load()
     }
 
     public convenience init() {
@@ -120,12 +140,73 @@ public final class AppEnvironment {
 
     var configuredModel: String {
         get {
-            UserDefaults.standard.string(forKey: SettingsKey.deepSeekModel)
-                ?? "deepseek-v4-flash"
+            aiConfiguration.model
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: SettingsKey.deepSeekModel)
+            var updated = aiConfiguration
+            updated.model = newValue
+            dependencies.aiConfigurationStore.save(updated)
+            aiConfiguration = updated
         }
+    }
+
+    func refreshAIConfiguration() {
+        aiConfiguration = dependencies.aiConfigurationStore.load()
+        refreshAPIKeyState()
+    }
+
+    func loadAPIKey() throws -> String {
+        try dependencies.apiKeyStore.load() ?? ""
+    }
+
+    func saveAIConfiguration(
+        _ configuration: AIProviderConfiguration,
+        apiKey: String
+    ) throws {
+        let configuration = try configuration.validated()
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedKey.isEmpty {
+            try dependencies.apiKeyStore.delete()
+        } else {
+            try dependencies.apiKeyStore.save(trimmedKey)
+        }
+        dependencies.aiConfigurationStore.save(configuration)
+        aiConfiguration = configuration
+        refreshAPIKeyState()
+    }
+
+    func testAIConnection(
+        configuration: AIProviderConfiguration,
+        apiKey: String
+    ) async throws -> String {
+        try await dependencies.aiConnectionTester.test(
+            configuration: configuration,
+            apiKey: apiKey
+        )
+    }
+
+    @discardableResult
+    func reconcilePracticeSettings(
+        validTopicIDs: Set<UUID>
+    ) -> PracticeSettingsSnapshot {
+        practiceSettings = dependencies.practiceSettingsStore.reconcile(
+            validTopicIDs: validTopicIDs
+        )
+        return practiceSettings
+    }
+
+    func setPracticeTopicIDs(_ topicIDs: Set<UUID>) {
+        var updated = practiceSettings
+        updated.explicitTopicIDs = topicIDs
+        dependencies.practiceSettingsStore.save(updated)
+        practiceSettings = updated
+    }
+
+    func setIncludePracticed(_ includePracticed: Bool) {
+        var updated = practiceSettings
+        updated.includePracticed = includePracticed
+        dependencies.practiceSettingsStore.save(updated)
+        practiceSettings = updated
     }
 
     func refreshAPIKeyState() {
@@ -142,32 +223,4 @@ public final class AppEnvironment {
         refreshAPIKeyState()
     }
 
-    var resolvedSpeechTranscriber: any SpeechTranscribing {
-        switch launchOptions.speechCapability {
-        case .automatic:
-            dependencies.speechTranscriber
-        case .supported, .fixtureSupported:
-            FixtureSpeechTranscriber(capability: .available)
-        case .unsupported:
-            FixtureSpeechTranscriber(
-                capability: .unavailable(.onDeviceRecognitionUnsupported)
-            )
-        case .denied:
-            FixtureSpeechTranscriber(capability: .unavailable(.authorizationDenied))
-        case .permissionDenied:
-            FixtureSpeechTranscriber(
-                capability: .authorizationRequired,
-                transcriptionError: .unavailable(.authorizationDenied)
-            )
-        }
-    }
-
-    func makeResolvedAudioRecorder() -> any AudioRecording {
-        switch launchOptions.speechCapability {
-        case .automatic:
-            dependencies.makeAudioRecorder()
-        case .supported, .fixtureSupported, .unsupported, .denied, .permissionDenied:
-            FixtureAudioRecorder()
-        }
-    }
 }

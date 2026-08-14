@@ -6,7 +6,6 @@ enum AnswerEditorAccessibilityID {
     static let question = "answer-editor.question"
     static let textEditor = "answer-editor.text"
     static let submit = "answer-editor.submit"
-    static let voice = "answer-editor.voice"
     static let processing = "answer-editor.processing"
     static let failure = "answer-editor.failure"
     static let result = "answer-editor.result"
@@ -16,29 +15,36 @@ enum AnswerEditorAccessibilityID {
 
 @MainActor
 struct AnswerEditorView: View {
+    enum Presentation {
+        case screen
+        case cardBack
+    }
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppEnvironment.self) private var environment
     @Query private var cards: [QuestionCardRecord]
 
     private let questionID: UUID
+    private let presentation: Presentation
     private let onAttemptSubmitted: (UUID) -> Void
     private let onContinueSession: () -> Void
 
     @State private var answerText = ""
-    @State private var isShowingVoice = false
     @State private var isProcessing = false
     @State private var errorMessage: String?
     @State private var submittedAttemptID: UUID?
     @State private var processingResult: EvaluationRecord?
-    @State private var localSpeechCapability: LocalSpeechCapability = .unavailable(.recognizerUnavailable)
+    @State private var isShowingResult = false
 
     init(
         questionID: UUID,
+        presentation: Presentation = .screen,
         onAttemptSubmitted: @escaping (UUID) -> Void = { _ in },
         onContinueSession: @escaping () -> Void = {}
     ) {
         self.questionID = questionID
+        self.presentation = presentation
         self.onAttemptSubmitted = onAttemptSubmitted
         self.onContinueSession = onContinueSession
         _cards = Query(filter: #Predicate<QuestionCardRecord> { card in card.id == questionID })
@@ -48,43 +54,48 @@ struct AnswerEditorView: View {
         questionID
     }
 
+    nonisolated static func navigationTitle(for presentation: Presentation) -> String {
+        presentation == .screen ? "回答" : ""
+    }
+
     private var card: QuestionCardRecord? { cards.first }
 
     var body: some View {
-        Group {
-            if let processingResult {
-                EvaluationResultView(evaluation: processingResult) {
-                    onContinueSession()
-                    dismiss()
-                }
+        ScrollView {
+            editorContent
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background {
+            if presentation == .cardBack {
+                Color(uiColor: .systemBackground)
             } else {
-                ScrollView {
-                    editorContent
+                Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+            }
+        }
+        .navigationTitle(Self.navigationTitle(for: presentation))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if presentation == .screen {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭", systemImage: "xmark") {
+                        dismiss()
+                    }
+                    .accessibilityIdentifier("answer-editor.close")
                 }
             }
         }
-        .scrollDismissesKeyboard(.interactively)
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle("回答")
-        .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier(AnswerEditorAccessibilityID.screen)
-        .task {
-            localSpeechCapability = await environment.resolvedSpeechTranscriber.localCapability(
-                locale: Locale(identifier: "zh-CN")
-            )
-        }
-        .sheet(isPresented: $isShowingVoice) {
-            if let card, speechCapabilityAllowsVoice {
-                VoiceAnswerView(
-                    questionID: card.id,
-                    transcriber: environment.resolvedSpeechTranscriber,
-                    audioRecorder: environment.makeResolvedAudioRecorder(),
-                    submissionService: AnswerSubmissionService(
-                        now: environment.dependencies.now,
-                        diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
-                    ),
-                    onSubmitted: acceptSubmittedAttempt
-                )
+        .sheet(isPresented: $isShowingResult) {
+            if let processingResult {
+                NavigationStack {
+                    EvaluationResultView(
+                        evaluation: processingResult,
+                        onContinue: continueFromResult,
+                        onClose: { isShowingResult = false }
+                    )
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
         }
     }
@@ -99,7 +110,6 @@ struct AnswerEditorView: View {
                     isSubmitting: isProcessing,
                     onSubmit: submitText
                 )
-                voiceEntry
             } else {
                 ContentUnavailableView("题目不存在", systemImage: "questionmark.folder")
             }
@@ -126,43 +136,12 @@ struct AnswerEditorView: View {
                 .font(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(AnswerEditorAccessibilityID.question)
-            Text("先独立回答；提交后才会显示 AI 六维评分和满分答案。")
+            Text("提交后先显示分数，再依次补充评语和满分答案。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
         .padding(18)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var voiceEntry: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("语音回答")
-                .font(.headline)
-            if speechCapabilityAllowsVoice {
-                Button {
-                    isShowingVoice = true
-                } label: {
-                    Label("录音并本地转写", systemImage: "mic.fill")
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 48)
-                }
-                .buttonStyle(.bordered)
-                .disabled(isProcessing)
-                .accessibilityIdentifier(AnswerEditorAccessibilityID.voice)
-            } else {
-                Label("本机无法本地转写", systemImage: "mic.slash")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minHeight: 48)
-                    .accessibilityIdentifier(AnswerEditorAccessibilityID.voice)
-                Text("语音入口会在设备端转写能力可用时出现；当前仍可使用文字回答。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     @ViewBuilder
@@ -198,22 +177,35 @@ struct AnswerEditorView: View {
         }
     }
 
-    private var speechCapabilityAllowsVoice: Bool {
-        localSpeechCapability.canStartVoiceAnswer
-    }
-
     private func submitText() {
-        guard let card else { return }
-        do {
-            processingResult = nil
-            let attempt = try AnswerSubmissionService(
-                now: environment.dependencies.now,
-                diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
-            ).submitText(questionID: card.id, rawText: answerText, context: modelContext)
-            answerText = ""
-            acceptSubmittedAttempt(attempt)
-        } catch {
-            errorMessage = error.localizedDescription
+        guard card != nil, !isProcessing else { return }
+
+        processingResult = nil
+        errorMessage = nil
+        isProcessing = true
+        Task { @MainActor in
+            guard let card else {
+                errorMessage = "题目已不存在，请返回题库重新选择。"
+                isProcessing = false
+                return
+            }
+
+            do {
+                let submissionService = AnswerSubmissionService(
+                    now: environment.dependencies.now,
+                    diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
+                )
+                let attempt = try submissionService.submitText(
+                    questionID: card.id,
+                    rawText: answerText,
+                    context: modelContext
+                )
+                answerText = ""
+                acceptSubmittedAttempt(attempt)
+            } catch {
+                errorMessage = error.localizedDescription
+                isProcessing = false
+            }
         }
     }
 
@@ -231,15 +223,44 @@ struct AnswerEditorView: View {
         errorMessage = nil
         Task { @MainActor in
             do {
-                processingResult = try await AnswerProcessingService(
+                let service = AnswerProcessingService(
                     aiClient: environment.dependencies.aiClient,
                     now: environment.dependencies.now,
                     diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
-                ).process(attemptID: attemptID, context: modelContext)
+                )
+                let evaluation = try await service.score(attemptID: attemptID, context: modelContext)
+                // Publish the numeric result immediately. The following two
+                // requests intentionally continue after the result page is
+                // visible.
+                processingResult = evaluation
+                isShowingResult = true
+                isProcessing = false
+                guard evaluation.status == .feedback else { return }
+                do {
+                    try await service.completeFeedback(
+                        attemptID: attemptID,
+                        evaluationID: evaluation.id,
+                        context: modelContext
+                    )
+                    _ = try await service.prepareReferenceAnswer(
+                        attemptID: attemptID,
+                        context: modelContext
+                    )
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
             } catch {
                 errorMessage = error.localizedDescription
+                isProcessing = false
             }
-            isProcessing = false
+        }
+    }
+
+    private func continueFromResult() {
+        isShowingResult = false
+        onContinueSession()
+        if presentation == .screen {
+            dismiss()
         }
     }
 }
