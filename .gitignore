@@ -23,3 +23,10 @@ diagnostics/
 # Local agent/tooling state
 .agents/
 .local/
+
+# Local generated Xcode backup
+._InterviewFlashcard.xcodeproj
+
+# Private research scratchpads
+/docs/prompt/
+/docs/research/
