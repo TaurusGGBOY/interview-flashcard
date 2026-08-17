@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-@testable import InterviewFlashcard
 
 final class QuestionDrawServiceTests: XCTestCase {
     private let backendID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!

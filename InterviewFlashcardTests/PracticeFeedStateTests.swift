@@ -60,18 +60,23 @@ final class PracticeFeedStateTests: XCTestCase {
         XCTAssertNil(state.undoLastSwipe())
     }
 
-    func testEmptyReasonDistinguishesGlobalLibraryFromFilteredPool() {
-        let state = PracticeFeedState()
+    func testEmptyReasonDistinguishesLibrarySelectionAndConfiguredPool() {
+        let emptySelection = PracticeFeedState()
+        let selected = PracticeFeedState(selectedTopicIDs: [topicID])
 
         XCTAssertEqual(
-            state.emptyReason(totalActiveCount: 0, eligibleCount: 0),
+            emptySelection.emptyReason(totalActiveCount: 0, eligibleCount: 0),
             .globalLibraryEmpty
         )
         XCTAssertEqual(
-            state.emptyReason(totalActiveCount: 4, eligibleCount: 0),
+            emptySelection.emptyReason(totalActiveCount: 4, eligibleCount: 0),
+            .noTopicsSelected
+        )
+        XCTAssertEqual(
+            selected.emptyReason(totalActiveCount: 4, eligibleCount: 0),
             .filteredPoolEmpty
         )
-        XCTAssertNil(state.emptyReason(totalActiveCount: 4, eligibleCount: 2))
+        XCTAssertNil(selected.emptyReason(totalActiveCount: 4, eligibleCount: 2))
     }
 
     func testTopicAndPracticedFiltersAreMutableConfigurationOnly() {

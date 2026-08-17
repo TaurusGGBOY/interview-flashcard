@@ -74,7 +74,7 @@
 - `AIEndpointResolver.resolve(configuration:) throws -> URL`。
 - `AIConfigurationStore` 提供同步 `load()` 与 `save(_:)`；`UserDefaultsAIConfigurationStore` 为正式实现，`InMemoryAIConfigurationStore` 为测试实现。
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 覆盖：
 
@@ -82,11 +82,11 @@
 - 根 Host、末尾 `/`、带路径前缀、末尾 `/v1` 和完整 Endpoint 均生成唯一正确路径。
 - 拒绝空 URL、非 HTTP(S)、缺少 Host、Query、Fragment 和空模型。
 - 新配置 round-trip 不丢字段。
-- 仅有旧 `settings.deepseek.model` 时迁移为 OpenAI 兼容、DeepSeek Base URL 并保留模型。
+- 仅有旧 `settings.deepseek.model` 时迁移为 `.openCodeGo`（OpenAI Responses + `https://opencode.ai/zen/go`）并保留模型。
 - 没有旧模型时迁移为 `deepseek-v4-flash`；迁移完成后旧值变化不再覆盖新配置。
 - 新存储必须使用独立 Provider key，不能把 DEBUG 启动用的旧 `settings.ai.provider` 当作用户配置反复写入。
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -102,14 +102,14 @@ DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
 
 Expected: FAIL because the new types do not exist.
 
-- [ ] **Step 3: Implement the minimum configuration layer**
+- [x] **Step 3: Implement the minimum configuration layer**
 
 - 新配置 key 使用 `settings.ai.configuration.provider`、`.base-url`、`.model` 和迁移版本，避免和 `LaunchOptions` 的旧 key 冲突。
 - URL 解析先 trim，再校验 Components；合并重复 `/v1`，完整 Endpoint 不重复追加。
 - 存储读取必须是幂等的。首次加载写入迁移结果；后续只读取新版字段。
 - `InMemoryAIConfigurationStore` 用锁保护可变状态，以满足 Swift 6 `Sendable` 和动态路由测试。
 
-- [ ] **Step 4: Re-run Task 1 tests**
+- [x] **Step 4: Re-run Task 1 tests**
 
 Expected: PASS。
 
@@ -130,7 +130,7 @@ Expected: PASS。
 - `AIProviderAdapter.responseText(from:response:)`。
 - `AIProviderAdapterFactory.make(for:)` 返回 OpenAI Responses、OpenAI Compatible Chat 或 Anthropic Messages 适配器。
 
-- [ ] **Step 1: Write failing request/response contract tests**
+- [x] **Step 1: Write failing request/response contract tests**
 
 OpenAI：
 
@@ -153,7 +153,7 @@ Anthropic：
 - 401/403、429、408/425/5xx 和其他状态分别映射到现有 `AIError`。
 - 三种 JSON body 均不包含 API Key；错误摘要不回显密钥或完整响应正文。
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -169,14 +169,14 @@ DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
 
 Expected: FAIL because adapter types are absent and privacy coverage only knows DeepSeek.
 
-- [ ] **Step 3: Implement adapters**
+- [x] **Step 3: Implement adapters**
 
 - 请求 DTO 和响应 envelope 保持 `private` 或文件内可见；测试通过公开行为检查 URLRequest 和输出文本。
 - 结构化请求保留现有 `PromptCatalog.systemPrompt(for:)` 约束。Anthropic 没有依赖 JSON mode，靠系统提示要求只返回 JSON。
 - HTTP 状态只保留状态码分类，不把未经处理的服务端 body 直接暴露给 UI。
 - Plain text 模式用于连接测试，最大输出保持小值；结构化模式保留足够 token 预算。
 
-- [ ] **Step 4: Re-run Task 2 tests**
+- [x] **Step 4: Re-run Task 2 tests**
 
 Expected: PASS，且请求 JSON 中搜索不到测试 API Key。
 
@@ -203,7 +203,7 @@ Expected: PASS，且请求 JSON 中搜索不到测试 API Key。
 - `AIConnectionTesting.test(configuration:apiKey:) async throws -> String`，正式实现固定发送“你好”、超时 30 秒。
 - `AppEnvironment` 提供当前配置、密钥状态、加载草稿、保存配置以及测试连接的方法。
 
-- [ ] **Step 1: Write failing behavior tests**
+- [x] **Step 1: Write failing behavior tests**
 
 - `ConfiguredAIClient` 对五种领域操作继续执行现有 JSON 编码、响应解码和 `AIResponseValidator`；评价结果的 `modelID` 使用当前配置模型。
 - Router 第一次请求走 OpenAI 兼容，保存 Anthropic 配置后第二次请求立即走 Anthropic，无需重建 AppRuntime。
@@ -214,7 +214,7 @@ Expected: PASS，且请求 JSON 中搜索不到测试 API Key。
 - 连接测试的 401、模型错误、限流、网络错误和超时可转换为设置页可显示状态；测试直接断言 URLRequest 的 30 秒 timeout，不实际等待 30 秒。
 - AppEnvironment 保存非空 key 时写 Keychain，保存空 key 时调用 delete；配置和密钥状态同时刷新。
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -232,16 +232,16 @@ DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
 
 Expected: FAIL because runtime still freezes a DeepSeek client at launch.
 
-- [ ] **Step 3: Implement shared execution and dynamic runtime**
+- [x] **Step 3: Implement shared execution and dynamic runtime**
 
 - 从现有 `DeepSeekAIClient.perform` 提取领域编解码与校验到 `ConfiguredAIClient`，不能削弱 Prompt 3 的评分校验和 canonical model/prompt 元数据。
-- `DeepSeekAIClient` 改成 OpenAI 兼容配置的薄包装，保留现有初始化器和测试兼容性。
+- `DeepSeekAIClient` 改成 OpenCode Go（OpenAI Responses）配置的薄包装，保留现有初始化器和测试兼容性。
 - 正式 `AppRuntime` 在非 Stub 分支创建 `DynamicAIClientRouter` 并套用 `RetryingAIClient`；旧 `.deepseek` LaunchOptions 只表示“使用已配置正式服务”。
 - DEBUG 环境密钥导入继续只写 Keychain；不得把环境变量写日志或 UserDefaults。
 - AppEnvironment 的可观察配置由 Store 初始化；保存成功后立即更新内存摘要，但业务 Router 仍以 Store 为权威来源。
 - `KeychainAPIKeyStore.service/account` 保持现值不变，以直接复用现有 DeepSeek API Key；本次不做会丢失密钥的 Keychain 重命名。
 
-- [ ] **Step 4: Re-run Task 3 and existing AI tests**
+- [x] **Step 4: Re-run Task 3 and existing AI tests**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -278,7 +278,7 @@ Expected: PASS。
 - `SettingsView` 只提供 AI 服务、练习设置二级入口及隐私说明。
 - `AIServiceSettingsView` 管理草稿、连接测试状态和显式保存。
 
-- [ ] **Step 1: Write failing draft/UI model tests**
+- [x] **Step 1: Write failing draft/UI model tests**
 
 - 从已保存配置和 Keychain key 初始化草稿，不在输入时修改正式配置。
 - 切换 Provider 自动写入该类型默认 URL/模型并清空草稿 key。
@@ -287,7 +287,7 @@ Expected: PASS。
 - 测试成功不调用保存；显式保存才更新 Environment。
 - 设置主页隐私文本不再写死 DeepSeek，改为“当前配置的 AI 服务”。
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -302,7 +302,7 @@ DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
 
 Expected: FAIL because AI settings are currently a single DeepSeek section.
 
-- [ ] **Step 3: Implement native two-level settings UI**
+- [x] **Step 3: Implement native two-level settings UI**
 
 - 根页面使用 `Form` + `NavigationLink`；AI 摘要显示 Provider、模型和密钥状态。
 - AI 页使用 Picker、URL TextField、模型 TextField、SecureField、测试连接按钮和保存按钮。
@@ -311,7 +311,7 @@ Expected: FAIL because AI settings are currently a single DeepSeek section.
 - 保存显示成功/失败提示；成功后返回或停留均可，但必须让根页面摘要立即更新。
 - 使用合适的 text content type、自动大写关闭、URL 键盘、动态字体和 VoiceOver label。
 
-- [ ] **Step 4: Run Task 4 tests and compile**
+- [x] **Step 4: Run Task 4 tests and compile**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -353,7 +353,7 @@ Expected: PASS and both new Swift files compile in app/core/test targets.
 - `resolved(validTopicIDs:)`：未初始化时返回全部有效 Topic；显式集合只取仍有效的 ID，并保留显式空集。
 - `PracticeSettingsView` 对每个 Topic 和开关进行即时持久化。
 
-- [ ] **Step 1: Write failing persistence and feed tests**
+- [x] **Step 1: Write failing persistence and feed tests**
 
 - 从未保存过 Topic 时，解析为全部当前有效 Topic。
 - 首次显式取消任意 Topic 后写入完整集合；以后新建 Topic 不自动加入。
@@ -364,7 +364,7 @@ Expected: PASS and both new Swift files compile in app/core/test targets.
 - PracticeView 使用 Environment 设置；修改设置后清理当前不合格卡并立即重抽。
 - 源代码/UI 模型不再有 `isFilterPresented`、`onOpenFilter`、`PracticeFilterSheet` 或“调整筛选”按钮。
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -380,7 +380,7 @@ DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
 
 Expected: FAIL because filters are session-local and only exposed by the sheet.
 
-- [ ] **Step 3: Implement persistent practice settings**
+- [x] **Step 3: Implement persistent practice settings**
 
 - UserDefaults 使用显式初始化标记和 UUID 字符串数组，不能用空数组同时表示两种状态。
 - Environment 持有可观察 Snapshot，并提供按有效 Topic ID 解析、切换 Topic、全选和切换 includePracticed 的方法。
@@ -390,7 +390,7 @@ Expected: FAIL because filters are session-local and only exposed by the sheet.
 - 保留全局无题时“去题库导入”，因为这是业务导航而非设置入口。
 - 历史页及其 Topic Picker 不作修改。
 
-- [ ] **Step 4: Re-run practice tests and compile**
+- [x] **Step 4: Re-run practice tests and compile**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -421,7 +421,7 @@ Expected: PASS；工程不再引用已删除的 Filter Sheet。
 - Create: `diagnostics/acceptance/multi-provider-settings/tests.log`
 - Create: `diagnostics/acceptance/multi-provider-settings/build.log`
 
-- [ ] **Step 1: Regenerate and run the full test suite**
+- [x] **Step 1: Regenerate and run the full test suite**
 
 ```bash
 mkdir -p diagnostics/acceptance/multi-provider-settings
@@ -438,7 +438,7 @@ DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
 
 Expected: all tests PASS，不能只以新增测试代替全量回归。
 
-- [ ] **Step 2: Build strictly for the simulator**
+- [x] **Step 2: Build strictly for the simulator**
 
 ```bash
 DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
@@ -462,7 +462,7 @@ xcrun simctl launch 779ACF98-BD23-4880-9F03-8DB9B9E43768 \
 
 禁止调用 `devicectl`、`ios-deploy`、真机 UDID 或 `generic/platform=iOS`。
 
-- [ ] **Step 3: Visually verify with a local mock endpoint**
+- [x] **Step 3: Visually verify with a local mock endpoint**
 
 - 在 Mac 本机启动临时 HTTP Mock，仅返回 OpenAI 兼容 Chat Completions 的“你好”响应；不读取真实 Keychain，不调用公网 AI。
 - 在模拟器进入“设置 > AI 服务”，验证三种类型、默认值和编辑能力。
@@ -472,7 +472,7 @@ xcrun simctl launch 779ACF98-BD23-4880-9F03-8DB9B9E43768 \
 - 取消全部 Topic，确认练习页只显示指向设置路径的文字；恢复全选，确认题卡重新出现。
 - 截图保存到本任务固定路径。
 
-- [ ] **Step 4: Completion audit**
+- [x] **Step 4: Completion audit**
 
 逐项检查设计规格：
 

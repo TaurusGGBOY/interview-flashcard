@@ -1,5 +1,7 @@
 # 物理 iPhone 离线语音转写验收
 
+当前状态：**BLOCKED / 未执行**。本 checkout 已通过本地语音能力门控与 Simulator fixture 测试，但本机没有可用于签名安装的物理 iPhone 验收证据；不能把这些测试当作真实设备断网转写结论。
+
 Simulator 只能验收语音按钮门控、权限失败、录音界面、转写确认和提交链路。语音功能最终签收还必须在一台物理 iPhone 上证明 Apple Speech 的设备端转写在断网时可用。本检查不使用 DeepSeek，AI provider 保持确定性本地 stub，音频不得上传。
 
 ## 前置条件

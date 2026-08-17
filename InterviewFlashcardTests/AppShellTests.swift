@@ -30,6 +30,25 @@ final class AppShellTests: XCTestCase {
         )
     }
 
+    func testLibraryQuestionLaunchesPracticeOnTheCardBack() {
+        let questionID = UUID(uuidString: "74100000-0000-0000-0000-000000000001")!
+        let request = PracticeLaunchRequest(questionID: questionID, startInAnswer: true)
+
+        XCTAssertEqual(request.questionID, questionID)
+        XCTAssertTrue(request.startInAnswer)
+    }
+
+    func testExtractionPromptRejectsBareConceptsAndPinsKubernetesTopic() {
+        let prompt = PromptCatalog.systemPrompt(
+            for: .decompose,
+            availableTopicNames: ["Others", "Kubernetes"]
+        )
+
+        XCTAssertTrue(prompt.contains("Never create a candidate from a bare noun"))
+        XCTAssertTrue(prompt.contains("Kubernetes/K8S"))
+        XCTAssertEqual(PromptCatalog.decomposeVersion, "decompose-extraction-v5")
+    }
+
     @MainActor
     func testDebugLaunchOptionsParseAcceptanceArguments() {
         let options = AppEnvironment.LaunchOptions.current(arguments: [
@@ -37,22 +56,47 @@ final class AppShellTests: XCTestCase {
             "-IFDiagnosticsEnabled", "YES",
             "-IFAIProvider", "stub",
             "-IFStubMode", "transient-failure",
-            "-IFSpeechCapability", "unsupported",
             "-IFSeedFixture", "empty",
             "-IFRandomSeed", "42",
+            "-IFAcceptanceConfirmRunID", "76000000-0000-0000-0000-000000000001",
+            "-IFKeepAwake", "YES",
         ])
 
         #if DEBUG
         XCTAssertTrue(options.diagnosticsEnabled)
         XCTAssertEqual(options.aiProvider, .stub)
         XCTAssertEqual(options.stubMode, "transient-failure")
-        XCTAssertEqual(options.speechCapability, .unsupported)
         XCTAssertEqual(options.seedFixture, "empty")
         XCTAssertEqual(options.randomSeed, 42)
+        XCTAssertEqual(
+            options.acceptanceConfirmRunID,
+            UUID(uuidString: "76000000-0000-0000-0000-000000000001")
+        )
+        XCTAssertTrue(options.keepAwakeWhileConnected)
         #else
         XCTAssertFalse(options.diagnosticsEnabled)
         XCTAssertEqual(options.aiProvider, .deepseek)
         XCTAssertNil(options.seedFixture)
+        #endif
+    }
+
+    @MainActor
+    func testDebugLaunchOptionsDefaultToDeepSeekWithoutExplicitProvider() {
+        let suiteName = "AppShellTests.default-provider"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let options = AppEnvironment.LaunchOptions.current(
+            arguments: ["InterviewFlashcard"],
+            environment: [:],
+            userDefaults: defaults
+        )
+
+        #if DEBUG
+        XCTAssertEqual(options.aiProvider, .deepseek)
+        #else
+        XCTAssertEqual(options.aiProvider, .deepseek)
         #endif
     }
 
@@ -78,5 +122,71 @@ final class AppShellTests: XCTestCase {
         #else
         XCTAssertEqual(options.aiProvider, .deepseek)
         #endif
+    }
+
+    @MainActor
+    func testDebugIconLaunchNeverReusesPersistedStubProvider() {
+        let suiteName = "AppShellTests.persisted-stub-provider"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(
+            AppEnvironment.LaunchOptions.AIProvider.stub.rawValue,
+            forKey: AppEnvironment.SettingsKey.aiProvider
+        )
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let options = AppEnvironment.LaunchOptions.current(
+            arguments: ["InterviewFlashcard"],
+            environment: [:],
+            userDefaults: defaults
+        )
+
+        #if DEBUG
+        XCTAssertEqual(options.aiProvider, .deepseek)
+        #else
+        XCTAssertEqual(options.aiProvider, .deepseek)
+        #endif
+    }
+
+    @MainActor
+    func testInjectedDebugProviderAndKeyArePersistedForFutureIconLaunches() throws {
+        let configurationStore = InMemoryAIConfigurationStore(
+            configuration: AIProviderKind.openAICompatible.defaultConfiguration
+        )
+        let keyStore = InMemoryAPIKeyStore(key: "old-provider-key")
+        let environment = AppEnvironment(
+            launchOptions: .current(arguments: ["InterviewFlashcard"], environment: [:]),
+            dependencies: .init(
+                now: { Date() },
+                aiClient: StubAIClient(),
+                apiKeyStore: keyStore,
+                aiConfigurationStore: configurationStore,
+                aiConnectionTester: TestAIConnectionTester()
+            )
+        )
+        let openCodeEnvironment = [
+            AIConfigurationEnvironmentKey.deepSeekBaseURL: "https://opencode.ai/zen/go",
+            AIConfigurationEnvironmentKey.deepSeekModel: "deepseek-v4-flash",
+            AIConfigurationEnvironmentKey.deepSeekProvider: "openai",
+            AIConfigurationEnvironmentKey.deepSeekAPIKey: "opencode-key",
+        ]
+
+        #if DEBUG
+        XCTAssertTrue(environment.persistInjectedAIConfigurationIfPresent(environment: openCodeEnvironment))
+        XCTAssertEqual(environment.aiConfiguration, .openCodeGo)
+        XCTAssertEqual(configurationStore.load(), .openCodeGo)
+        XCTAssertEqual(try keyStore.load(), "opencode-key")
+        #else
+        XCTAssertFalse(environment.persistInjectedAIConfigurationIfPresent(environment: openCodeEnvironment))
+        #endif
+    }
+}
+
+private struct TestAIConnectionTester: AIConnectionTesting {
+    func test(
+        configuration: AIProviderConfiguration,
+        apiKey: String
+    ) async throws -> String {
+        "ok"
     }
 }

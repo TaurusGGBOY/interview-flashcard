@@ -30,6 +30,10 @@ actor StubAIClient: AIClient {
 
     func decompose(_ request: DecomposeRequest) async throws -> DecomposeResponse {
         try failIfConfigured(operation: .decompose)
+        let topicName = topicName(
+            for: request.ownedMarkdown,
+            availableTopicNames: request.availableTopicNames
+        )
         let sections = headingSections(in: request.ownedMarkdown)
         if !sections.isEmpty {
             let candidates = sections.enumerated().map { index, section in
@@ -45,7 +49,8 @@ actor StubAIClient: AIClient {
                     ordinal: index,
                     question: question(for: section.title),
                     sourceBackedAnswerMaterial: section.material,
-                    sourceAnchors: [anchor]
+                    sourceAnchors: [anchor],
+                    topicName: request.availableTopicNames.isEmpty ? nil : topicName
                 )
             }
             return DecomposeResponse(candidates: candidates, completionStatus: .complete)
@@ -67,10 +72,33 @@ actor StubAIClient: AIClient {
                 ordinal: index,
                 question: "样例面试题 \(index + 1)：请解释资料中的核心概念。",
                 sourceBackedAnswerMaterial: quote,
-                sourceAnchors: [anchor]
+                sourceAnchors: [anchor],
+                topicName: request.availableTopicNames.isEmpty ? nil : topicName
             )
         }
         return DecomposeResponse(candidates: candidates, completionStatus: .complete)
+    }
+
+    func referenceAnswer(_ request: ReferenceAnswerRequest) async throws -> ReferenceAnswerResponse {
+        try failIfConfigured(operation: .referenceAnswer)
+        let answer = seniorReferenceAnswer(
+            from: request.sourceBackedMaterial.isEmpty
+                ? request.question
+                : request.sourceBackedMaterial
+        )
+        let keyPoints: [String]
+        if case let .success(points) = FullScoreAnswerQualityPolicy.assess(answer) {
+            keyPoints = points
+        } else {
+            keyPoints = []
+        }
+        return ReferenceAnswerResponse(
+            answerText: answer,
+            keyPoints: keyPoints,
+            modelID: "stub-deterministic-v1",
+            promptVersion: PromptCatalog.referenceAnswerVersion,
+            completionStatus: .complete
+        )
     }
 
     func refine(_ request: RefineRequest) async throws -> RefineResponse {
@@ -78,16 +106,17 @@ actor StubAIClient: AIClient {
         if mode == .refineAlwaysFail {
             throw AIError.invalidResponse("Injected refine failure")
         }
-        let topic = request.availableTopicNames.first(where: { $0 != "Others" })
-            ?? request.availableTopicNames.first
-            ?? "Others"
         let cards = request.candidates.map { candidate in
             RefinedCardDraft(
                 id: derivedUUID(base: request.requestID, salt: candidate.ordinal + 101),
                 mergedCandidateIDs: [candidate.id],
                 question: candidate.question,
                 fullScoreAnswer: seniorReferenceAnswer(from: candidate.sourceBackedAnswerMaterial),
-                topicName: topic,
+                topicName: candidate.topicName.flatMap { request.availableTopicNames.contains($0) ? $0 : nil }
+                    ?? topicName(
+                        for: candidate.question + "\n" + candidate.sourceBackedAnswerMaterial,
+                        availableTopicNames: request.availableTopicNames
+                    ),
                 sourceAnchors: candidate.sourceAnchors
             )
         }
@@ -309,6 +338,22 @@ actor StubAIClient: AIClient {
         default:
             return title.hasSuffix("？") || title.hasSuffix("?") ? title : "\(title) 的核心问题是什么？"
         }
+    }
+
+    private func topicName(for text: String, availableTopicNames: [String]) -> String {
+        guard !availableTopicNames.isEmpty else { return "Others" }
+        let normalizedText = text.lowercased()
+        if normalizedText.contains("kubernetes") || normalizedText.contains("k8s") {
+            if let kubernetesTopic = availableTopicNames.first(where: { name in
+                let normalizedName = name.lowercased()
+                return normalizedName.contains("kubernetes") || normalizedName == "k8s"
+            }) {
+                return kubernetesTopic
+            }
+        }
+        return availableTopicNames.first(where: { $0 != "Others" })
+            ?? availableTopicNames.first
+            ?? "Others"
     }
 
     private func derivedUUID(base: UUID, salt: Int) -> UUID {

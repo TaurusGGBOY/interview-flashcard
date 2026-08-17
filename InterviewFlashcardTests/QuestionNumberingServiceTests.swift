@@ -8,8 +8,9 @@ final class QuestionNumberingServiceTests: XCTestCase {
     @MainActor
     func testNextNumberStartsAtOneForEmptyLibrary() throws {
         let context = try makeContext()
+        let service = makeService()
 
-        XCTAssertEqual(try QuestionNumberingService().nextNumber(context: context), 1)
+        XCTAssertEqual(try service.nextNumber(context: context), 1)
     }
 
     @MainActor
@@ -17,8 +18,9 @@ final class QuestionNumberingServiceTests: XCTestCase {
         let context = try makeContext()
         try insertCard(number: 1, context: context)
         try insertCard(number: 2, context: context)
+        let service = makeService()
 
-        XCTAssertEqual(try QuestionNumberingService().nextNumber(context: context), 3)
+        XCTAssertEqual(try service.nextNumber(context: context), 3)
     }
 
     @MainActor
@@ -28,11 +30,28 @@ final class QuestionNumberingServiceTests: XCTestCase {
         let second = try insertCard(number: 2, context: context)
         try insertCard(number: 3, context: context)
         try context.save()
+        let service = makeService()
 
         context.delete(second)
         try context.save()
 
-        XCTAssertEqual(try QuestionNumberingService().nextNumber(context: context), 4)
+        XCTAssertEqual(try service.nextNumber(context: context), 4)
+    }
+
+    @MainActor
+    func testDeletingHighestNumberDoesNotMakeItReusable() throws {
+        let context = try makeContext()
+        try insertCard(number: 1, context: context)
+        try insertCard(number: 2, context: context)
+        let highest = try insertCard(number: 3, context: context)
+        try context.save()
+        let service = makeService()
+        try service.backfillIfNeeded(context: context)
+
+        context.delete(highest)
+        try context.save()
+
+        XCTAssertEqual(try service.nextNumber(context: context), 4)
     }
 
     @MainActor
@@ -60,7 +79,7 @@ final class QuestionNumberingServiceTests: XCTestCase {
             context: context
         )
 
-        try QuestionNumberingService().backfillIfNeeded(context: context)
+        try makeService().backfillIfNeeded(context: context)
 
         XCTAssertEqual(existing.questionNumber, 7)
         XCTAssertEqual(first.questionNumber, 8)
@@ -81,7 +100,7 @@ final class QuestionNumberingServiceTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 200),
             context: context
         )
-        let service = QuestionNumberingService()
+        let service = makeService()
 
         try service.backfillIfNeeded(context: context)
         let assignedNumbers = [first.questionNumber, second.questionNumber]
@@ -95,6 +114,12 @@ final class QuestionNumberingServiceTests: XCTestCase {
         let context = try TestModelContainer.make().mainContext
         try AppModelContainer.bootstrapOthers(context: context, now: Fixtures.now)
         return context
+    }
+
+    @MainActor
+    private func makeService() -> QuestionNumberingService {
+        let suite = "QuestionNumberingServiceTests.\(UUID().uuidString)"
+        return QuestionNumberingService(defaults: UserDefaults(suiteName: suite)!)
     }
 
     @MainActor

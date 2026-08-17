@@ -103,18 +103,17 @@ if [[ "$static_only" == "false" ]]; then
     build 2>&1 | tee "$REPOSITORY_ROOT/.build/logs/final-build.log"
   "$REPOSITORY_ROOT/scripts/acceptance/assert-iphone-app-metadata.sh" "$APP_PATH"
 
-  IF_BUILD_LOG_PATH="$REPOSITORY_ROOT/.build/logs/final-build.log" \
+    IF_BUILD_LOG_PATH="$REPOSITORY_ROOT/.build/logs/final-build.log" \
     IF_LAUNCH_LOG_PATH="$REPOSITORY_ROOT/.build/logs/final-launch.log" \
     "$REPOSITORY_ROOT/scripts/dev/build-and-launch.sh" \
-      --ai stub --stub-mode success --speech unsupported \
-      --fixture real-question-demo --random-seed 20260805
+      --ai cc-switch
 fi
 
 # A requested live run must fail before building or launching when the project
 # key is absent; it must never silently fall back to the deterministic stub.
 missing_key_output="$(env -u INTERVIEW_FLASHCARD_DEEPSEEK_API_KEY \
   "$REPOSITORY_ROOT/scripts/dev/build-and-launch.sh" \
-    --ai deepseek --speech unsupported 2>&1 || true)"
+    --ai deepseek 2>&1 || true)"
 if [[ "$missing_key_output" != *"INTERVIEW_FLASHCARD_DEEPSEEK_API_KEY is required"* ]]; then
   echo "FAILED: --ai deepseek without a key did not fail explicitly" >&2
   exit 1

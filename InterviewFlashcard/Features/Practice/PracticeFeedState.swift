@@ -2,6 +2,7 @@ import Foundation
 
 enum PracticeFeedEmptyReason: Equatable, Sendable {
     case globalLibraryEmpty
+    case noTopicsSelected
     case filteredPoolEmpty
 }
 
@@ -36,6 +37,9 @@ struct PracticeFeedState: Equatable, Sendable {
     ) -> PracticeFeedEmptyReason? {
         if totalActiveCount <= 0 {
             return .globalLibraryEmpty
+        }
+        if selectedTopicIDs.isEmpty {
+            return .noTopicsSelected
         }
         if eligibleCount <= 0 {
             return .filteredPoolEmpty

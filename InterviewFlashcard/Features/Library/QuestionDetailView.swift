@@ -6,6 +6,8 @@ struct QuestionDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @State private var showTrashConfirmation = false
+    @State private var isShowingAnswerEditor = false
+    @State private var selectedAttemptID: UUID?
     @State private var errorMessage: String?
 
     private var latestReferenceAnswer: ReferenceAnswerVersionRecord? {
@@ -28,6 +30,17 @@ struct QuestionDetailView: View {
 
     var body: some View {
         List {
+            Section {
+                Button {
+                    isShowingAnswerEditor = true
+                } label: {
+                    Label("开始回答", systemImage: "play.circle.fill")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("library.question.detail.start-answer")
+            }
+
             Section("题目") {
                 Text(question.questionText)
                     .textSelection(.enabled)
@@ -56,8 +69,8 @@ struct QuestionDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(orderedAttempts, id: \.id) { attempt in
-                        NavigationLink {
-                            AttemptDetailView(attempt: attempt)
+                        Button {
+                            selectedAttemptID = attempt.id
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(attempt.rawText)
@@ -72,6 +85,7 @@ struct QuestionDetailView: View {
                                 .foregroundStyle(.secondary)
                             }
                         }
+                        .buttonStyle(.plain)
                         .accessibilityIdentifier("library.question.attempt.\(attempt.id.uuidString)")
                     }
                 }
@@ -79,7 +93,28 @@ struct QuestionDetailView: View {
         }
         .navigationTitle("题目详情")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isShowingAnswerEditor) {
+            NavigationStack {
+                AnswerEditorView(questionID: question.id)
+            }
+        }
+        .sheet(isPresented: attemptDetailSheetBinding) {
+            if let selectedAttemptID,
+               let attempt = orderedAttempts.first(where: { $0.id == selectedAttemptID }) {
+                NavigationStack {
+                    AttemptDetailView(attempt: attempt)
+                }
+            } else {
+                ContentUnavailableView("回答记录不存在", systemImage: "clock.badge.questionmark")
+            }
+        }
         .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("关闭", systemImage: "xmark") {
+                    dismiss()
+                }
+                .accessibilityIdentifier("library.question.detail.close")
+            }
             ToolbarItem(placement: .destructiveAction) {
                 Button("移到回收站", role: .destructive) {
                     showTrashConfirmation = true
@@ -108,5 +143,14 @@ struct QuestionDetailView: View {
             Text(errorMessage ?? "未知错误")
         }
         .accessibilityIdentifier("library.question.detail")
+    }
+
+    private var attemptDetailSheetBinding: Binding<Bool> {
+        Binding(
+            get: { selectedAttemptID != nil },
+            set: { isPresented in
+                if !isPresented { selectedAttemptID = nil }
+            }
+        )
     }
 }

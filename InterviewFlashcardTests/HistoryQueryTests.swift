@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 import XCTest
-@testable import InterviewFlashcard
 
 final class HistoryQueryTests: XCTestCase {
     @MainActor
@@ -32,6 +31,26 @@ final class HistoryQueryTests: XCTestCase {
         let result = try XCTUnwrap(HistoryQuery(context: context).forQuestion(card).first)
         XCTAssertEqual(result.id, attempt.id)
         XCTAssertNotEqual(result.questionTextSnapshot, card.questionText)
+    }
+
+    @MainActor
+    func testSearchMatchesQuestionAnswerAndTopicButNotTrashedQuestions() throws {
+        let context = try TestModelContainer.make().mainContext
+        let card = try Fixtures.makeCard(context: context, question: "如何设计缓存失效？")
+        card.topic.name = "后端系统"
+        let attempt = try insertAttempt(card: card, at: Fixtures.now, context: context)
+        attempt.rawText = "使用 Cache Key 和主动失效。"
+        try context.save()
+
+        XCTAssertTrue(HistoryQuery.matches(attempt, query: "缓存失效"))
+        XCTAssertTrue(HistoryQuery.matches(attempt, query: "主动失效"))
+        XCTAssertTrue(HistoryQuery.matches(attempt, query: "后端系统"))
+        XCTAssertTrue(HistoryQuery.matches(attempt, query: "cache key"))
+        XCTAssertTrue(HistoryQuery.matches(attempt, query: ""))
+
+        card.trashedAt = Fixtures.now
+        try context.save()
+        XCTAssertFalse(try HistoryQuery(context: context).global().contains(where: { $0.id == attempt.id }))
     }
 
     @MainActor

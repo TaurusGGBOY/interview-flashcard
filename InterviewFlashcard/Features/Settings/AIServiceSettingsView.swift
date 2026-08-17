@@ -82,7 +82,7 @@ struct AIServiceSettingsView: View {
 struct AIServiceSettingsContent: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var draft = AISettingsDraft(
-        configuration: AIProviderKind.openAICompatible.defaultConfiguration,
+        configuration: .openCodeGo,
         apiKey: ""
     )
     @State private var message: String?

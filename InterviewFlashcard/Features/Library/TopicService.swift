@@ -18,6 +18,9 @@ struct TopicService {
         case destinationMustDiffer
         case destinationNotFound
         case topicNotFound
+        case emptySelection
+        case questionNotFound
+        case questionIsTrashed
 
         var errorDescription: String? {
             switch self {
@@ -33,6 +36,12 @@ struct TopicService {
                 "接收题目的 Topic 已不存在，请重新选择。"
             case .topicNotFound:
                 "要修改的 Topic 已不存在。"
+            case .emptySelection:
+                "请至少选择一个 Topic。"
+            case .questionNotFound:
+                "要修改的题目已不存在。"
+            case .questionIsTrashed:
+                "回收站中的题目不能更改 Topic。"
             }
         }
     }
@@ -85,13 +94,33 @@ struct TopicService {
         context: ModelContext,
         now: Date = Date()
     ) throws {
-        guard topic.systemKindRaw == nil else {
+        try delete([topic], moveCardsTo: destination, context: context, now: now)
+    }
+
+    func delete(
+        _ topics: [TopicRecord],
+        moveCardsTo destination: TopicRecord,
+        context: ModelContext,
+        now: Date = Date()
+    ) throws {
+        guard !topics.isEmpty else {
+            throw ServiceError.emptySelection
+        }
+
+        let sourceIDs = Set(topics.map(\.id))
+        guard topics.allSatisfy({ $0.systemKindRaw == nil }) else {
             throw ServiceError.systemTopicIsImmutable
         }
-        guard topic.id != destination.id else {
+        guard !sourceIDs.contains(destination.id) else {
             throw ServiceError.destinationMustDiffer
         }
-        try requireExisting(topic, context: context)
+
+        let sourceDescriptor = FetchDescriptor<TopicRecord>()
+        let persistedTopics = try context.fetch(sourceDescriptor)
+            .filter { sourceIDs.contains($0.id) }
+        guard persistedTopics.count == sourceIDs.count else {
+            throw ServiceError.topicNotFound
+        }
 
         let destinationID = destination.id
         let destinationDescriptor = FetchDescriptor<TopicRecord>(
@@ -103,11 +132,13 @@ struct TopicService {
             throw ServiceError.destinationNotFound
         }
 
-        for card in Array(topic.cards) {
-            card.topic = persistedDestination
-            card.updatedAt = now
+        for topic in persistedTopics {
+            for card in Array(topic.cards) {
+                card.topic = persistedDestination
+                card.updatedAt = now
+            }
+            context.delete(topic)
         }
-        context.delete(topic)
         try context.save()
         exportDiagnostics(from: context)
     }
@@ -149,9 +180,61 @@ struct TopicService {
         for topic: TopicRecord,
         context: ModelContext
     ) throws -> [TopicRecord] {
-        try context.fetch(FetchDescriptor<TopicRecord>())
-            .filter { $0.id != topic.id }
+        try deletionDestinations(for: [topic], context: context)
+    }
+
+    func deletionDestinations(
+        for topics: [TopicRecord],
+        context: ModelContext
+    ) throws -> [TopicRecord] {
+        guard !topics.isEmpty else {
+            throw ServiceError.emptySelection
+        }
+        guard topics.allSatisfy({ $0.systemKindRaw == nil }) else {
+            throw ServiceError.systemTopicIsImmutable
+        }
+        let sourceIDs = Set(topics.map(\.id))
+        return try context.fetch(FetchDescriptor<TopicRecord>())
+            .filter { !sourceIDs.contains($0.id) }
             .sorted(by: Self.libraryOrder)
+    }
+
+    func moveCards(
+        _ cards: [QuestionCardRecord],
+        to destination: TopicRecord,
+        context: ModelContext,
+        now: Date = Date()
+    ) throws {
+        guard !cards.isEmpty else {
+            throw ServiceError.emptySelection
+        }
+
+        let cardIDs = Set(cards.map(\.id))
+        let persistedCards = try context.fetch(FetchDescriptor<QuestionCardRecord>())
+            .filter { cardIDs.contains($0.id) }
+        guard persistedCards.count == cardIDs.count else {
+            throw ServiceError.questionNotFound
+        }
+        guard persistedCards.allSatisfy({ $0.trashedAt == nil }) else {
+            throw ServiceError.questionIsTrashed
+        }
+
+        let destinationID = destination.id
+        let destinationDescriptor = FetchDescriptor<TopicRecord>(
+            predicate: #Predicate { candidate in
+                candidate.id == destinationID
+            }
+        )
+        guard let persistedDestination = try context.fetch(destinationDescriptor).first else {
+            throw ServiceError.destinationNotFound
+        }
+
+        for card in persistedCards {
+            card.topic = persistedDestination
+            card.updatedAt = now
+        }
+        try context.save()
+        exportDiagnostics(from: context)
     }
 
     static func libraryOrder(_ lhs: TopicRecord, _ rhs: TopicRecord) -> Bool {
@@ -170,26 +253,24 @@ struct TopicService {
         excluding excludedID: UUID?,
         context: ModelContext
     ) throws -> String {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else {
+        // Invisible spacing characters (for example U+2006 from copied or
+        // justified text) must never reach the store: they are not visible to
+        // the user and they break the exact-name contract with the AI
+        // whitelist. Clean the display name and dedupe with the same
+        // whitespace-insensitive key used by AIResponseValidator.
+        let cleanedName = TopicNameNormalization.cleanedForStorage(name)
+        guard !cleanedName.isEmpty else {
             throw ServiceError.emptyName
         }
 
-        let candidateKey = canonicalKey(for: trimmedName)
+        let candidateKey = TopicNameNormalization.key(cleanedName)
         let topics = try context.fetch(FetchDescriptor<TopicRecord>())
         if topics.contains(where: {
-            $0.id != excludedID && canonicalKey(for: $0.name) == candidateKey
+            $0.id != excludedID && TopicNameNormalization.key($0.name) == candidateKey
         }) {
-            throw ServiceError.duplicateName(trimmedName)
+            throw ServiceError.duplicateName(cleanedName)
         }
-        return trimmedName
-    }
-
-    private func canonicalKey(for name: String) -> String {
-        name.folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: Locale(identifier: "en_US_POSIX")
-        )
+        return cleanedName
     }
 
     private func requireExisting(_ topic: TopicRecord, context: ModelContext) throws {

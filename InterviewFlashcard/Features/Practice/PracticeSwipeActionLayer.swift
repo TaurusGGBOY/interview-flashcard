@@ -4,6 +4,10 @@ import UIKit
 struct PracticeSwipeActionLayer<Content: View>: View {
     let cardWidth: CGFloat
     let isInteractionDisabled: Bool
+    let skipTitle: String
+    let skipSystemImage: String
+    let answerTitle: String
+    let answerSystemImage: String
     let onCommit: (PracticeSwipeAction) -> Void
     let content: Content
 
@@ -15,11 +19,19 @@ struct PracticeSwipeActionLayer<Content: View>: View {
     init(
         cardWidth: CGFloat,
         isInteractionDisabled: Bool,
+        skipTitle: String = "跳过",
+        skipSystemImage: String = "xmark",
+        answerTitle: String = "开始回答",
+        answerSystemImage: String = "pencil.and.outline",
         onCommit: @escaping (PracticeSwipeAction) -> Void,
         @ViewBuilder content: () -> Content
     ) {
         self.cardWidth = cardWidth
         self.isInteractionDisabled = isInteractionDisabled
+        self.skipTitle = skipTitle
+        self.skipSystemImage = skipSystemImage
+        self.answerTitle = answerTitle
+        self.answerSystemImage = answerSystemImage
         self.onCommit = onCommit
         self.content = content()
     }
@@ -27,14 +39,14 @@ struct PracticeSwipeActionLayer<Content: View>: View {
     var body: some View {
         content
             .overlay(alignment: .topLeading) {
-                swipeIndicator(title: "开始回答", systemImage: "pencil.and.outline", color: .green)
+                swipeIndicator(title: answerTitle, systemImage: answerSystemImage, color: .green)
                     .padding(24)
                     .opacity(indicatorOpacity(for: .answer))
                     .accessibilityHidden(true)
                     .accessibilityIdentifier(PracticeAccessibilityID.answerIndicator)
             }
             .overlay(alignment: .topTrailing) {
-                swipeIndicator(title: "跳过", systemImage: "xmark", color: .red)
+                swipeIndicator(title: skipTitle, systemImage: skipSystemImage, color: .red)
                     .padding(24)
                     .opacity(indicatorOpacity(for: .skip))
                     .accessibilityHidden(true)
@@ -45,10 +57,10 @@ struct PracticeSwipeActionLayer<Content: View>: View {
             .rotationEffect(.degrees(reduceMotion ? 0 : Double(dragTranslation.width / max(cardWidth, 1)) * 7))
             .simultaneousGesture(dragGesture)
             .allowsHitTesting(!isInteractionDisabled)
-            .accessibilityAction(named: "跳过") {
+            .accessibilityAction(named: skipTitle) {
                 commit(.skip)
             }
-            .accessibilityAction(named: "开始回答") {
+            .accessibilityAction(named: answerTitle) {
                 commit(.answer)
             }
             .onChange(of: cardWidth) { _, _ in

@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 import XCTest
-@testable import InterviewFlashcard
 
 final class PersistenceTests: XCTestCase {
     @MainActor
@@ -62,7 +61,8 @@ final class PersistenceTests: XCTestCase {
         let card = try Fixtures.makeCard(context: context)
         XCTAssertNil(card.questionNumber)
 
-        try QuestionNumberingService().backfillIfNeeded(context: context)
+        let defaults = UserDefaults(suiteName: "PersistenceTests.\(UUID().uuidString)")!
+        try QuestionNumberingService(defaults: defaults).backfillIfNeeded(context: context)
         try context.save()
 
         let persistedCard = try XCTUnwrap(

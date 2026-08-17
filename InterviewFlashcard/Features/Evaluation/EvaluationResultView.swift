@@ -3,6 +3,25 @@ import SwiftUI
 struct EvaluationResultView: View {
     let evaluation: EvaluationRecord
     let onContinue: () -> Void
+    let onClose: (() -> Void)?
+    let continueTitle: String
+    let continueSystemImage: String
+
+    @State private var isShowingHistory = false
+
+    init(
+        evaluation: EvaluationRecord,
+        onContinue: @escaping () -> Void,
+        onClose: (() -> Void)? = nil,
+        continueTitle: String = "下一题",
+        continueSystemImage: String = "arrow.right"
+    ) {
+        self.evaluation = evaluation
+        self.onContinue = onContinue
+        self.onClose = onClose
+        self.continueTitle = continueTitle
+        self.continueSystemImage = continueSystemImage
+    }
 
     private var presentation: EvaluationPresentation {
         EvaluationPresentation(evaluation: evaluation)
@@ -12,23 +31,25 @@ struct EvaluationResultView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 scoreHeader
+                stageStatus
                 ScoreRadarChart(dimensions: presentation.dimensions)
                 dimensions
                 feedbackSections
                 answerComparison
-                NavigationLink {
-                    QuestionHistoryView(question: evaluation.attempt.question)
+                Button {
+                    isShowingHistory = true
                 } label: {
                     Label("查看这道题的回答历史", systemImage: "clock.arrow.circlepath")
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 48)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("answer-editor.result.history")
 
                 Button {
                     onContinue()
                 } label: {
-                    Label("下一题", systemImage: "arrow.right")
+                    Label(continueTitle, systemImage: continueSystemImage)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 50)
                 }
@@ -41,6 +62,19 @@ struct EvaluationResultView: View {
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("本次结果")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let onClose {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭", systemImage: "xmark") {
+                        onClose()
+                    }
+                    .accessibilityIdentifier("answer-editor.result.close")
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingHistory) {
+            QuestionHistoryView(question: evaluation.attempt.question)
+        }
         .accessibilityIdentifier(AnswerEditorAccessibilityID.result)
     }
 
@@ -67,6 +101,51 @@ struct EvaluationResultView: View {
         .padding(20)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityIdentifier(AnswerEditorAccessibilityID.resultScore)
+    }
+
+    @ViewBuilder
+    private var stageStatus: some View {
+        switch (evaluation.status, evaluation.attempt.processingStatus) {
+        case (.feedback, _):
+            stageBanner(
+                title: "分数已出",
+                message: "正在生成每个小项的评语，分数不会改变。",
+                systemImage: "text.bubble"
+            )
+        case (.completed, .referenceAnswer):
+            stageBanner(
+                title: "评语已出",
+                message: "正在生成满分答案，完成后会自动显示。",
+                systemImage: "sparkles"
+            )
+        case (.failed, _), (_, .failed):
+            if let failure = evaluation.attempt.failureSummary {
+                stageBanner(title: "补充内容生成失败", message: failure, systemImage: "exclamationmark.triangle")
+            }
+        default:
+            EmptyView()
+        }
+    }
+
+    private func stageBanner(title: String, message: String, systemImage: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if evaluation.status == .feedback || evaluation.attempt.processingStatus == .referenceAnswer {
+                ProgressView()
+            }
+        }
+        .padding(14)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityIdentifier("answer-editor.result.stage")
     }
 
     private var dimensions: some View {
@@ -171,10 +250,17 @@ struct EvaluationResultView: View {
                 answerBlock(title: "历史润色版本", text: polishedText)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("满分答案（v\(presentation.referenceVersion)）")
-                    .font(.subheadline.weight(.semibold))
-                Text(presentation.referenceAnswer)
-                    .textSelection(.enabled)
+                if presentation.referenceAnswer.isEmpty {
+                    Label("满分答案生成中…", systemImage: "hourglass")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("满分答案（v\(presentation.referenceVersion)）")
+                        .font(.subheadline.weight(.semibold))
+                    Text(presentation.referenceAnswer)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("answer-editor.result.reference-answer")
+                }
             }
             .padding(12)
             .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

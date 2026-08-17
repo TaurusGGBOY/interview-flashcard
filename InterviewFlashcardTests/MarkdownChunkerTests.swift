@@ -1,8 +1,14 @@
 import Foundation
 import XCTest
-@testable import InterviewFlashcard
 
 final class MarkdownChunkerTests: XCTestCase {
+    func testDefaultConfigurationKeepsOwnedChunkBoundedAndContextCompact() {
+        let configuration = MarkdownChunker.Configuration()
+
+        XCTAssertEqual(configuration.targetCharacters, 10_000)
+        XCTAssertEqual(configuration.overlapCharacters, 400)
+    }
+
     func testChunkerPreservesCodeBlockAndAddsReadOnlyOverlap() throws {
         let longMarkdown = makeLongMarkdown(sectionCount: 12, explanationLength: 320)
             + "\n## 代码示例\n\n```swift\nlet marker = \"## 这不是题目\"\nprint(marker)\n```\n"

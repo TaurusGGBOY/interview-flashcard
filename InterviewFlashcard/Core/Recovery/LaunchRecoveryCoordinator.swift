@@ -26,7 +26,7 @@ struct LaunchRecoveryCoordinator {
         let attempts = (try? context.fetch(FetchDescriptor<AnswerAttemptRecord>())) ?? []
         for attempt in attempts where isPending(attempt.processingStatus) && attempt.question.trashedAt == nil {
             do {
-                _ = try await processing.process(attemptID: attempt.id, context: context)
+                _ = try await processing.resume(attemptID: attempt.id, context: context)
             } catch {
                 // The service persists failed state; recovery must not retry forever.
             }
@@ -37,14 +37,14 @@ struct LaunchRecoveryCoordinator {
         switch status {
         case .queued, .chunking, .decomposing, .refining, .activating:
             true
-        case .active, .failed:
+        case .ready, .active, .failed:
             false
         }
     }
 
     private func isPending(_ status: AttemptProcessingStatus) -> Bool {
         switch status {
-        case .saved, .polishing, .evaluating:
+        case .saved, .scoring, .feedback, .referenceAnswer, .polishing, .evaluating:
             true
         case .completed, .failed:
             false

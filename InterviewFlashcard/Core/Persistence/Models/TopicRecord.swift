@@ -11,7 +11,7 @@ final class TopicRecord {
     var createdAt: Date
     var updatedAt: Date
 
-    @Relationship(deleteRule: .deny, inverse: \QuestionCardRecord.topic)
+    @Relationship(deleteRule: .cascade, inverse: \QuestionCardRecord.topic)
     var cards: [QuestionCardRecord] = []
 
     var systemKind: SystemTopicKind? {

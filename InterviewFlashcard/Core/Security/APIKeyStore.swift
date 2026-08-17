@@ -80,6 +80,33 @@ struct KeychainAPIKeyStore: APIKeyStore {
     }
 }
 
+/// DEBUG-only simulator acceptance support. The launch script injects the
+/// real provider key into the simulator process environment so live tests do
+/// not require typing the key into the Settings screen again. Release builds
+/// always use the Keychain path below.
+struct EnvironmentBackedAPIKeyStore: APIKeyStore {
+    private let keychain = KeychainAPIKeyStore()
+
+    func load() throws -> String? {
+#if DEBUG
+        if let key = ProcessInfo.processInfo.environment[AIConfigurationEnvironmentKey.deepSeekAPIKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !key.isEmpty {
+            return key
+        }
+#endif
+        return try keychain.load()
+    }
+
+    func save(_ key: String) throws {
+        try keychain.save(key)
+    }
+
+    func delete() throws {
+        try keychain.delete()
+    }
+}
+
 final class InMemoryAPIKeyStore: APIKeyStore, @unchecked Sendable {
     private let lock = NSLock()
     private var key: String?

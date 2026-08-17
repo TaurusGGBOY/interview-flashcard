@@ -26,6 +26,22 @@ struct HistoryQuery {
         try global(questionID: question.id)
     }
 
+    nonisolated static func matches(_ attempt: AnswerAttemptRecord, query: String) -> Bool {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else { return true }
+
+        return [
+            attempt.questionTextSnapshot,
+            attempt.rawText,
+            attempt.question.topic.name
+        ].contains { value in
+            value.range(
+                of: normalizedQuery,
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+            ) != nil
+        }
+    }
+
     static func newestFirst(_ lhs: AnswerAttemptRecord, _ rhs: AnswerAttemptRecord) -> Bool {
         if lhs.submittedAt == rhs.submittedAt {
             return lhs.id.uuidString > rhs.id.uuidString
@@ -36,6 +52,7 @@ struct HistoryQuery {
 
 struct AttemptDetailView: View {
     let attempt: AnswerAttemptRecord
+    @Environment(\.dismiss) private var dismiss
 
     private var latestPolish: PolishResultRecord? {
         attempt.polishResults.max {
@@ -48,7 +65,27 @@ struct AttemptDetailView: View {
         attempt.evaluations.max { $0.createdAt < $1.createdAt }
     }
 
+    @ViewBuilder
     var body: some View {
+        if let latestEvaluation {
+            // A historical scored answer is the same product state as the
+            // result shown immediately after scoring. Reuse that complete
+            // presentation so the radar chart, evidence, gaps, and answer
+            // comparison cannot drift apart between the two entry points.
+            EvaluationResultView(
+                evaluation: latestEvaluation,
+                onContinue: { dismiss() },
+                onClose: { dismiss() },
+                continueTitle: "关闭",
+                continueSystemImage: "xmark"
+            )
+            .accessibilityIdentifier("history.attempt.detail")
+        } else {
+            pendingAttemptView
+        }
+    }
+
+    private var pendingAttemptView: some View {
         List {
             Section("题目快照") {
                 Text(attempt.questionTextSnapshot)
@@ -68,41 +105,23 @@ struct AttemptDetailView: View {
 
             if let audioAsset = attempt.audioAsset {
                 Section("本地录音") {
-                    LabeledContent("时长", value: "\(audioAsset.duration, specifier: "%.1f") 秒")
+                    LabeledContent("时长", value: String(format: "%.1f 秒", audioAsset.duration))
                     LocalAudioPlaybackButton(audioAsset: audioAsset)
                 }
             }
 
-            Section("润色版本") {
-                if let latestPolish {
+            if let latestPolish {
+                Section("历史润色版本") {
                     LabeledContent("修订", value: "v\(latestPolish.revision)")
                     Text(latestPolish.polishedText)
                         .textSelection(.enabled)
                         .accessibilityIdentifier("history.attempt.polished")
-                } else {
-                    Text("尚未完成润色（\(statusText(for: attempt.processingStatus))）")
-                        .foregroundStyle(.secondary)
                 }
             }
 
             Section("AI 评分") {
-                if let latestEvaluation {
-                    if let total = latestEvaluation.totalScore {
-                        LabeledContent("总分", value: "\(total) / 100")
-                            .accessibilityIdentifier("history.attempt.total-score")
-                    } else {
-                        Text("本次回答不可评分")
-                    }
-                    ForEach(ScoreDimension.allCases, id: \.self) { dimension in
-                        LabeledContent(dimension.displayName, value: "\(latestEvaluation.dimensionScores[dimension])")
-                    }
-                    Text("模型：\(latestEvaluation.modelID) · 提示词：\(latestEvaluation.promptVersion)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("等待评分")
-                        .foregroundStyle(.secondary)
-                }
+                Text("等待评分")
+                    .foregroundStyle(.secondary)
             }
 
             if let failure = attempt.failureSummary {
@@ -114,38 +133,40 @@ struct AttemptDetailView: View {
         }
         .navigationTitle("回答详情")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("关闭", systemImage: "xmark") {
+                    dismiss()
+                }
+                .accessibilityIdentifier("history.attempt.close")
+            }
+        }
         .accessibilityIdentifier("history.attempt.detail")
     }
 
-    private func statusText(for status: AttemptProcessingStatus) -> String {
-        switch status {
-        case .saved: "待处理"
-        case .polishing: "润色中"
-        case .evaluating: "评分中"
-        case .completed: "已完成"
-        case .failed: "失败"
-        }
-    }
 }
 
 struct QuestionHistoryView: View {
     let question: QuestionCardRecord
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @State private var selectedAttemptID: UUID?
 
     var body: some View {
         List {
             ForEach(attempts, id: \.id) { attempt in
-                NavigationLink {
-                    AttemptDetailView(attempt: attempt)
+                Button {
+                    selectedAttemptID = attempt.id
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(attempt.submittedAt, format: .dateTime)
                         Text(attempt.rawText)
                             .lineLimit(2)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                        .foregroundStyle(.secondary)
                     }
                 }
+                .buttonStyle(.plain)
             }
         }
         .overlay {
@@ -154,10 +175,37 @@ struct QuestionHistoryView: View {
             }
         }
         .navigationTitle("回答历史")
+        .sheet(isPresented: detailSheetBinding) {
+            if let selectedAttemptID,
+               let attempt = attempts.first(where: { $0.id == selectedAttemptID }) {
+                NavigationStack {
+                    AttemptDetailView(attempt: attempt)
+                }
+            } else {
+                ContentUnavailableView("回答记录不存在", systemImage: "clock.badge.questionmark")
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("关闭", systemImage: "xmark") {
+                    dismiss()
+                }
+                .accessibilityIdentifier("history.question.close")
+            }
+        }
     }
 
     private var attempts: [AnswerAttemptRecord] {
         (try? HistoryQuery(context: context).forQuestion(question)) ?? []
+    }
+
+    private var detailSheetBinding: Binding<Bool> {
+        Binding(
+            get: { selectedAttemptID != nil },
+            set: { isPresented in
+                if !isPresented { selectedAttemptID = nil }
+            }
+        )
     }
 }
 

@@ -15,10 +15,16 @@ struct MarkdownImportChunk: Equatable, Sendable {
 
 struct MarkdownChunker: Sendable {
     struct Configuration: Equatable, Sendable {
-        var targetCharacters: Int = 12_000
-        var overlapCharacters: Int = 1_200
+        // Keep each single-pass LLM request large enough to reduce round trips,
+        // while leaving the provider enough output budget to return every
+        // structured candidate and answer. Larger documents are still split at
+        // Markdown/AST boundaries.
+        var targetCharacters: Int = 10_000
+        // Boundary context is read-only guidance; keeping it compact avoids
+        // resending a large part of neighboring chunks on every request.
+        var overlapCharacters: Int = 400
 
-        init(targetCharacters: Int = 12_000, overlapCharacters: Int = 1_200) {
+        init(targetCharacters: Int = 10_000, overlapCharacters: Int = 400) {
             self.targetCharacters = targetCharacters
             self.overlapCharacters = overlapCharacters
         }

@@ -170,18 +170,18 @@ protocol APIKeyStore: Sendable {
 1. `scripts/acceptance/start-run.sh <feature-slug>` 记录当前 commit、`git status --short`、Simulator UDID、runtime 和 App bundle ID。
 2. `scripts/dev/test.sh -only-testing:InterviewFlashcardTests/<SuiteName>` 保存到 `tests.log`。
 3. `scripts/dev/build-and-launch.sh --ai stub --stub-mode success --speech unsupported` 保存 build/launch log；脚本必须卸载旧 App 后安装当前产物，避免旧构建污染。
-4. 通过 `mcp__node_repl__js` 初始化 Computer Use：
+4. 通过 `mcp__node_repl__js` 初始化 Computer Use。Xcode 27 使用 Device Hub 承载 Simulator 窗口，验收目标固定为 iPhone 17 Pro Max（UDID `779ACF98-BD23-4880-9F03-8DB9B9E43768`）：
 
 ```javascript
 if (!globalThis.sky) {
   const { setupComputerUseRuntime } = await import("/Users/gaoguobin/.codex/plugins/cache/openai-bundled/computer-use/1.0.1000550/scripts/computer-use-client.mjs");
   await setupComputerUseRuntime({ globals: globalThis });
 }
-var simulatorState = await sky.get_app_state({ app: "Simulator" });
+var simulatorState = await sky.get_app_state({ app: "com.apple.dt.Devices" });
 nodeRepl.write(simulatorState.text);
 ```
 
-5. 每次点击或输入前重新调用 `sky.get_app_state({ app: "Simulator" })`，基于当次可见 label/accessibility identifier 选择元素；不得复用动态 index。操作用 `sky.click`、`sky.type_text`、`sky.press_key` 或 `sky.scroll`，不使用 shell/AppleScript 替代 UI。
+5. 每次点击或输入前重新调用 `sky.get_app_state({ app: "com.apple.dt.Devices" })`，确认左侧选中 iPhone 17 Pro Max，基于当次可见 label/accessibility identifier 选择元素；不得复用动态 index。操作用 `sky.click`、`sky.type_text`、`sky.press_key` 或 `sky.scroll`，不使用 shell/AppleScript 替代 UI。
 6. 操作前后分别执行 `sky.press_key({ app: "Simulator", key: "super+shift+3" })`，再运行 `scripts/acceptance/collect-screenshot.sh <feature-slug> before|after`。
 7. `scripts/acceptance/read-state.sh <feature-slug>` 从 `xcrun simctl get_app_container "$IF_SIMULATOR_UDID" com.gaoguobin.InterviewFlashcard data` 下读取 `Library/Application Support/Diagnostics/state.json`；把 UI 结果与 JSON 中实体 ID、数量、状态和分数逐项核对。
 8. 把实际操作、可见结果、状态核对和异常写入 `steps.md`，执行 `scripts/acceptance/finish-run.sh <feature-slug>`。任一证据缺失或状态不一致即失败，修复后必须重新跑完整合同。
@@ -513,7 +513,7 @@ Expected: compile failure for AI DTOs and clients.
 
 - [ ] **Step 4: Implement DeepSeek transport and deterministic stub**
 
-DeepSeek client posts to configurable `https://api.deepseek.com/chat/completions`, sends `Authorization: Bearer <Keychain value>`, requests JSON output, checks HTTP/finish status, and never logs request headers. Model defaults to a setting value, not a model field default. Stub output is deterministic from request IDs: sample import yields three known cards, evaluation yields dimension scores `80/60/80/80/70/100` and local total 75; launch arguments can select `success`, `transient-once`, `refine-always-fail`, `processing-paused`, `evaluation-invalid`, and `reclassify-batch-failure` modes.
+DeepSeek client posts to the OpenCode Go subscription endpoint `https://opencode.ai/zen/go/v1/responses` (OpenAI Responses protocol; direct `api.deepseek.com` is pay-per-use and never used), sends `Authorization: Bearer <Keychain value>`, requests JSON output, checks HTTP/finish status, and never logs request headers. Model defaults to a setting value, not a model field default. Stub output is deterministic from request IDs: sample import yields three known cards, evaluation yields dimension scores `80/60/80/80/70/100` and local total 75; launch arguments can select `success`, `transient-once`, `refine-always-fail`, `processing-paused`, `evaluation-invalid`, and `reclassify-batch-failure` modes.
 
 - [ ] **Step 5: Implement Keychain and Settings UI**
 

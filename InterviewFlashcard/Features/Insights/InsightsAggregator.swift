@@ -57,7 +57,13 @@ struct InsightsAggregator {
         var id: Date { date }
     }
 
+    enum Scope: Equatable, Sendable {
+        case all
+        case topic(UUID)
+    }
+
     struct Snapshot: Equatable, Sendable {
+        let scope: Scope
         let totalCards: Int
         let practicedCards: Int
         let unpracticedCards: Int
@@ -76,15 +82,64 @@ struct InsightsAggregator {
         let trend: [TrendPoint]
     }
 
+    private struct TopicBucket {
+        let name: String
+        var cardCount = 0
+        var practicedCards = Set<UUID>()
+        var scores = [Int]()
+    }
+
     func snapshot(
         asOf: Date,
         calendar: Calendar,
         cards: [CardInput],
-        attempts: [AttemptInput]
+        attempts: [AttemptInput],
+        scope: Scope = .all
     ) -> Snapshot {
-        let activeCards = cards.filter { !$0.isTrashed }
+        let allActiveCards = cards.filter { !$0.isTrashed }
+        let allActiveIDs = Set(allActiveCards.map(\.id))
+        let allActiveAttempts = attempts.filter { allActiveIDs.contains($0.questionID) }
+        let allPracticedIDs = Set(allActiveAttempts.map(\.questionID))
+        let allScored = allActiveAttempts.compactMap { attempt -> (AttemptInput, EvaluationInput)? in
+            guard let evaluation = attempt.evaluation,
+                  evaluation.status == .completed,
+                  evaluation.totalScore != nil else { return nil }
+            return (attempt, evaluation)
+        }
+
+        let scoredByQuestion: [UUID: [(AttemptInput, EvaluationInput)]] = Dictionary(grouping: allScored) { $0.0.questionID }
+        let topicBuckets = allActiveCards.reduce(into: [UUID: TopicBucket]()) { buckets, card in
+            var bucket = buckets[card.topicID] ?? TopicBucket(name: card.topicName)
+            bucket.cardCount += 1
+            if allPracticedIDs.contains(card.id) {
+                bucket.practicedCards.insert(card.id)
+            }
+            bucket.scores.append(contentsOf: scoredByQuestion[card.id, default: []].compactMap { $0.1.totalScore })
+            buckets[card.topicID] = bucket
+        }
+
+        let topicSummaries = topicBuckets
+            .map { id, bucket in
+                TopicSummary(
+                    id: id,
+                    name: bucket.name,
+                    cardCount: bucket.cardCount,
+                    practicedCards: bucket.practicedCards.count,
+                    coverageRate: bucket.cardCount == 0 ? 0 : Double(bucket.practicedCards.count) / Double(bucket.cardCount),
+                    averageScore: bucket.scores.isEmpty ? nil : average(bucket.scores)
+                )
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+
+        let activeCards: [CardInput]
+        switch scope {
+        case .all:
+            activeCards = allActiveCards
+        case let .topic(topicID):
+            activeCards = allActiveCards.filter { $0.topicID == topicID }
+        }
         let activeIDs = Set(activeCards.map(\.id))
-        let activeAttempts = attempts.filter { activeIDs.contains($0.questionID) }
+        let activeAttempts = allActiveAttempts.filter { activeIDs.contains($0.questionID) }
         let scored = activeAttempts.compactMap { attempt -> (AttemptInput, EvaluationInput)? in
             guard let evaluation = attempt.evaluation,
                   evaluation.status == .completed,
@@ -99,32 +154,17 @@ struct InsightsAggregator {
         let thirtyDayStart = calendar.date(byAdding: .day, value: -29, to: startOfToday) ?? startOfToday
 
         let averageDimensions = averageDimensionScores(scored.map(\.1))
-        let topicSummaries = activeCards
-            .reduce(into: [UUID: (name: String, cards: Int, practiced: Set<UUID>, scores: [Int])]()) { result, card in
-                var value = result[card.topicID] ?? (card.topicName, 0, [], [])
-                value.cards += 1
-                if practicedIDs.contains(card.id) { value.practiced.insert(card.id) }
-                let cardScores = scored.filter { $0.0.questionID == card.id }.compactMap { $0.1.totalScore }
-                value.scores.append(contentsOf: cardScores)
-                result[card.topicID] = value
-            }
-            .map { id, value in
-                TopicSummary(
-                    id: id,
-                    name: value.name,
-                    cardCount: value.cards,
-                    practicedCards: value.practiced.count,
-                    coverageRate: value.cards == 0 ? 0 : Double(value.practiced.count) / Double(value.cards),
-                    averageScore: value.scores.isEmpty ? nil : Int(Double(value.scores.reduce(0, +)) / Double(value.scores.count).rounded())
-                )
-            }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-        let trend = Dictionary(grouping: activeAttempts) { calendar.startOfDay(for: $0.submittedAt) }
-            .map { date, dayAttempts in
-                let dayScores = dayAttempts.compactMap { attempt in
-                    guard let evaluation = attempt.evaluation, evaluation.status == .completed else { return nil }
-                    return evaluation.totalScore
+        let groupedTrend: [Date: [AttemptInput]] = Dictionary(grouping: activeAttempts) {
+            calendar.startOfDay(for: $0.submittedAt)
+        }
+        let trend: [TrendPoint] = groupedTrend
+            .map { (date: Date, dayAttempts: [AttemptInput]) -> TrendPoint in
+                let dayScores: [Int] = dayAttempts.compactMap { (attempt: AttemptInput) -> Int? in
+                    guard let evaluation = attempt.evaluation,
+                          evaluation.status == .completed,
+                          let totalScore = evaluation.totalScore else { return nil }
+                    return totalScore
                 }
                 return TrendPoint(
                     date: date,
@@ -135,6 +175,7 @@ struct InsightsAggregator {
             .sorted { $0.date < $1.date }
 
         return Snapshot(
+            scope: scope,
             totalCards: activeCards.count,
             practicedCards: practicedIDs.count,
             unpracticedCards: max(0, activeCards.count - practicedIDs.count),
@@ -145,7 +186,7 @@ struct InsightsAggregator {
             practiceDays: practiceDays,
             sevenDayAnswerCount: activeAttempts.filter { $0.submittedAt >= sevenDayStart && $0.submittedAt <= asOf }.count,
             thirtyDayAnswerCount: activeAttempts.filter { $0.submittedAt >= thirtyDayStart && $0.submittedAt <= asOf }.count,
-            averageScore: scores.isEmpty ? 0 : Int(Double(scores.reduce(0, +)) / Double(scores.count).rounded()),
+            averageScore: scores.isEmpty ? 0 : average(scores),
             latestScore: scored.sorted { $0.0.submittedAt > $1.0.submittedAt }.first?.1.totalScore,
             bestScore: scores.max(),
             averageDimensions: averageDimensions,
@@ -159,7 +200,8 @@ struct InsightsAggregator {
         asOf: Date,
         calendar: Calendar,
         cards: [QuestionCardRecord],
-        attempts: [AnswerAttemptRecord]
+        attempts: [AnswerAttemptRecord],
+        scope: Scope = .all
     ) -> Snapshot {
         let cardInputs = cards.map {
             CardInput(id: $0.id, topicID: $0.topic.id, topicName: $0.topic.name, isTrashed: $0.isTrashed)
@@ -170,17 +212,22 @@ struct InsightsAggregator {
             }
             return AttemptInput(id: attempt.id, questionID: attempt.question.id, submittedAt: attempt.submittedAt, evaluation: evaluation)
         }
-        return snapshot(asOf: asOf, calendar: calendar, cards: cardInputs, attempts: attemptInputs)
+        return snapshot(asOf: asOf, calendar: calendar, cards: cardInputs, attempts: attemptInputs, scope: scope)
     }
 
     private func averageDimensionScores(_ evaluations: [EvaluationInput]) -> DimensionScores {
         guard !evaluations.isEmpty else { return .init(correctness: 0, coverage: 0, reasoning: 0, structure: 0, tradeoffs: 0, precision: 0) }
         func avg(_ keyPath: KeyPath<DimensionScores, Int>) -> Int {
-            Int(Double(evaluations.map { $0.dimensions[keyPath: keyPath] }.reduce(0, +)) / Double(evaluations.count).rounded())
+            average(evaluations.map { $0.dimensions[keyPath: keyPath] })
         }
         return DimensionScores(
             correctness: avg(\.correctness), coverage: avg(\.coverage), reasoning: avg(\.reasoning),
             structure: avg(\.structure), tradeoffs: avg(\.tradeoffs), precision: avg(\.precision)
         )
+    }
+
+    private func average(_ values: [Int]) -> Int {
+        guard !values.isEmpty else { return 0 }
+        return Int(Double(values.reduce(0, +)) / Double(values.count))
     }
 }

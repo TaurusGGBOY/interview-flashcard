@@ -1,6 +1,5 @@
 import SwiftData
 import XCTest
-@testable import InterviewFlashcard
 
 final class ReclassificationServiceTests: XCTestCase {
     @MainActor
@@ -15,11 +14,11 @@ final class ReclassificationServiceTests: XCTestCase {
         let summary = await fixture.service.runAllOthers(context: fixture.context)
 
         let batchSizes = await fixture.ai.batchSizes
-        XCTAssertEqual(batchSizes, [50, 50, 3])
+        XCTAssertEqual(batchSizes.sorted(), [3, 50, 50])
         XCTAssertEqual(summary.totalCards, 103)
         XCTAssertEqual(summary.succeededBatches, 2)
         XCTAssertEqual(summary.failedBatches, 1)
-        XCTAssertEqual(summary.remainingOthersCards, 50)
+        XCTAssertTrue([3, 50].contains(summary.remainingOthersCards))
         XCTAssertNil(summary.fatalErrorMessage)
         XCTAssertEqual(fixture.contentSnapshot(), before, "重新分类只能修改 Topic")
 
@@ -27,17 +26,39 @@ final class ReclassificationServiceTests: XCTestCase {
         let run = try XCTUnwrap(runs.first)
         XCTAssertEqual(run.status, .completedWithFailures)
         XCTAssertEqual(run.totalCards, 103)
-        XCTAssertEqual(run.reclassifiedCards, 53)
-        XCTAssertEqual(run.failedCards, 50)
+        XCTAssertEqual(run.reclassifiedCards + run.failedCards, 103)
+        XCTAssertEqual(run.failedCards, summary.remainingOthersCards)
         XCTAssertNotNil(run.completedAt)
-        XCTAssertEqual(
-            run.batches.sorted { $0.ordinal < $1.ordinal }.map(\.status),
-            [.completed, .failed, .completed]
-        )
+        XCTAssertEqual(run.batches.filter { $0.status == .failed }.count, 1)
     }
 
     @MainActor
-    func testUnknownTopicFallsBackToOthersWithoutFailingBatch() async throws {
+    func testReclassificationUsesBoundedConcurrencyForFourBatches() async throws {
+        let fixture = try ReclassificationFixture.make(
+            othersCount: 151,
+            topicNames: ["Swift"],
+            delayNanoseconds: 20_000_000
+        )
+
+        let summary = await fixture.service.runAllOthers(context: fixture.context)
+
+        let batchSizes = await fixture.ai.batchSizes
+        let maximumActive = await fixture.ai.maximumActiveCalls()
+        let run = try XCTUnwrap(
+            try fixture.context.fetch(FetchDescriptor<ReclassificationRunRecord>()).first
+        )
+        XCTAssertEqual(batchSizes.sorted(), [1, 50, 50, 50])
+        XCTAssertLessThanOrEqual(maximumActive, 3)
+        XCTAssertEqual(summary.totalCards, 151)
+        XCTAssertEqual(summary.succeededBatches, 4)
+        XCTAssertEqual(summary.failedBatches, 0)
+        XCTAssertEqual(run.reclassifiedCards, 151)
+        XCTAssertEqual(summary.remainingOthersCards, 0)
+        XCTAssertTrue(fixture.cards.allSatisfy { $0.topic.systemKind != .others })
+    }
+
+    @MainActor
+    func testUnknownTopicFailsBatchWithoutSilentlyReportingSuccess() async throws {
         let fixture = try ReclassificationFixture.make(
             othersCount: 1,
             topicNames: ["Swift"],
@@ -46,8 +67,8 @@ final class ReclassificationServiceTests: XCTestCase {
 
         let summary = await fixture.service.runAllOthers(context: fixture.context)
 
-        XCTAssertEqual(summary.succeededBatches, 1)
-        XCTAssertEqual(summary.failedBatches, 0)
+        XCTAssertEqual(summary.succeededBatches, 0)
+        XCTAssertEqual(summary.failedBatches, 1)
         XCTAssertEqual(summary.remainingOthersCards, 1)
         XCTAssertEqual(try fixture.activeOthersCount(), 1)
     }
@@ -63,7 +84,7 @@ final class ReclassificationServiceTests: XCTestCase {
         let summary = await fixture.service.runAllOthers(context: fixture.context)
 
         let batchSizes = await fixture.ai.batchSizes
-        XCTAssertEqual(batchSizes, [50, 1])
+        XCTAssertEqual(batchSizes.sorted(), [1, 50])
         XCTAssertEqual(summary.succeededBatches, 0)
         XCTAssertEqual(summary.failedBatches, 2)
         XCTAssertEqual(summary.remainingOthersCards, 51)
@@ -109,7 +130,8 @@ private struct ReclassificationFixture {
         othersCount: Int,
         topicNames: [String],
         failedCalls: Set<Int> = [],
-        responseMode: ReclassificationAIStub.ResponseMode = .firstAvailableTopic
+        responseMode: ReclassificationAIStub.ResponseMode = .firstAvailableTopic,
+        delayNanoseconds: UInt64 = 0
     ) throws -> ReclassificationFixture {
         let context = try TestModelContainer.make().mainContext
         try AppModelContainer.bootstrapOthers(context: context, now: Fixtures.now)
@@ -154,7 +176,8 @@ private struct ReclassificationFixture {
 
         let ai = ReclassificationAIStub(
             failedCalls: failedCalls,
-            responseMode: responseMode
+            responseMode: responseMode,
+            delayNanoseconds: delayNanoseconds
         )
         return ReclassificationFixture(
             context: context,
@@ -192,24 +215,42 @@ private actor ReclassificationAIStub: AIClient {
 
     private let failedCalls: Set<Int>
     private let responseMode: ResponseMode
+    private let delayNanoseconds: UInt64
+    private var activeCalls = 0
+    private var maximumActive = 0
     private(set) var batchSizes: [Int] = []
 
-    init(failedCalls: Set<Int>, responseMode: ResponseMode) {
+    init(
+        failedCalls: Set<Int>,
+        responseMode: ResponseMode,
+        delayNanoseconds: UInt64
+    ) {
         self.failedCalls = failedCalls
         self.responseMode = responseMode
+        self.delayNanoseconds = delayNanoseconds
+    }
+
+    func maximumActiveCalls() -> Int {
+        maximumActive
     }
 
     func reclassify(_ request: ReclassifyRequest) async throws -> ReclassifyResponse {
+        activeCalls += 1
+        maximumActive = max(maximumActive, activeCalls)
+        defer { activeCalls -= 1 }
         batchSizes.append(request.cards.count)
-        let callNumber = batchSizes.count
-        if failedCalls.contains(callNumber) {
-            throw AIError.invalidResponse("Injected failure for batch \(callNumber)")
+        let batchOrdinal = batchSizes.count
+        if failedCalls.contains(batchOrdinal) {
+            throw AIError.invalidResponse("Injected failure for batch \(batchOrdinal)")
         }
+        try await Task.sleep(nanoseconds: delayNanoseconds)
 
         let topicName: String
         switch responseMode {
         case .firstAvailableTopic, .omitLastAssignment:
-            topicName = request.availableTopicNames.first ?? "Others"
+            topicName = request.availableTopicNames.first(where: { $0 != "Others" })
+                ?? request.availableTopicNames.first
+                ?? "Others"
         case .unknownTopic:
             topicName = "Unknown Topic"
         }

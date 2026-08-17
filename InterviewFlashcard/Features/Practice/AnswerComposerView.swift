@@ -47,5 +47,19 @@ struct AnswerComposerView: View {
         }
         .padding(16)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        // Keep the primary action reachable while the keyboard is shown.
+        // The scroll view can still pan, but the keyboard toolbar guarantees
+        // that submitting does not depend on first dismissing the keyboard.
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("提交回答", systemImage: "paperplane.fill") {
+                    isEditorFocused = false
+                    onSubmit()
+                }
+                .disabled(isSubmitting || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("\(AnswerEditorAccessibilityID.submit).keyboard")
+            }
+        }
     }
 }

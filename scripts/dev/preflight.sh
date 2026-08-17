@@ -4,11 +4,13 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-readonly INTERVIEW_XCODE_DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+readonly INTERVIEW_XCODE_DEVELOPER_DIR="${INTERVIEW_XCODE_DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 readonly XCODEBUILD_PATH="$INTERVIEW_XCODE_DEVELOPER_DIR/usr/bin/xcodebuild"
 readonly ACCEPTANCE_ENV_DIR="$REPOSITORY_ROOT/.local"
 readonly ACCEPTANCE_ENV_PATH="$ACCEPTANCE_ENV_DIR/acceptance.env"
 readonly IF_BUNDLE_ID_VALUE="com.gaoguobin.InterviewFlashcard"
+readonly IF_SIMULATOR_DEVICE_NAME="${IF_SIMULATOR_DEVICE_NAME:-iPhone 17 Pro Max}"
+readonly IF_SIMULATOR_UDID_OVERRIDE="${IF_SIMULATOR_UDID:-}"
 
 blocked() {
   echo "BLOCKED: $*" >&2
@@ -20,7 +22,7 @@ if [[ "$INTERVIEW_XCODE_DEVELOPER_DIR" == "/Library/Developer/CommandLineTools" 
 fi
 
 if [[ ! -x "$XCODEBUILD_PATH" ]]; then
-  blocked "full Xcode not found at /Applications/Xcode.app"
+  blocked "full Xcode not found at $INTERVIEW_XCODE_DEVELOPER_DIR"
 fi
 
 echo "Using developer directory: $INTERVIEW_XCODE_DEVELOPER_DIR"
@@ -37,20 +39,28 @@ xcodegen --version
 runtime_list="$(DEVELOPER_DIR="$INTERVIEW_XCODE_DEVELOPER_DIR" xcrun simctl list runtimes available)" || \
   blocked "unable to list available Simulator runtimes"
 
-runtime_record="$(printf '%s\n' "$runtime_list" | sed -nE 's/^[[:space:]]*(iOS 26([.][0-9]+)*) .* - (com[.]apple[.]CoreSimulator[.]SimRuntime[.]iOS-26-[0-9-]+)$/\1|\3/p' | sed -n '1p')"
+runtime_record="$(printf '%s\n' "$runtime_list" | sed -nE 's/^[[:space:]]*(iOS [0-9]+([.][0-9]+)*) .* - (com[.]apple[.]CoreSimulator[.]SimRuntime[.]iOS-[0-9-]+)$/\1|\3/p' | sort -V | tail -n 1)"
 if [[ -z "$runtime_record" ]]; then
-  blocked "an available iOS 26.x Simulator runtime is required"
+  blocked "an available iOS Simulator runtime is required"
 fi
 
 IF_SIMULATOR_RUNTIME_VALUE="${runtime_record%%|*}"
 runtime_identifier="${runtime_record#*|}"
 
-device_list="$(DEVELOPER_DIR="$INTERVIEW_XCODE_DEVELOPER_DIR" xcrun simctl list devices available "$runtime_identifier")" || \
+device_list="$(DEVELOPER_DIR="$INTERVIEW_XCODE_DEVELOPER_DIR" xcrun simctl list devices available "$IF_SIMULATOR_RUNTIME_VALUE")" || \
   blocked "unable to list available devices for $IF_SIMULATOR_RUNTIME_VALUE"
 
-device_record="$(printf '%s\n' "$device_list" | sed -nE 's/^[[:space:]]*(iPhone[^()]*) \(([0-9A-Fa-f-]{36})\) \((Booted|Shutdown)\).*$/\1|\2|\3/p' | sed -n '1p')"
+device_candidates="$(printf '%s\n' "$device_list" | sed -nE 's/^[[:space:]]*(iPhone[^()]*) \(([0-9A-Fa-f-]{36})\) \((Booted|Shutdown)\).*$/\1|\2|\3/p')"
+if [[ -n "$IF_SIMULATOR_UDID_OVERRIDE" ]]; then
+  device_record="$(printf '%s\n' "$device_candidates" | awk -F'|' -v desired="$IF_SIMULATOR_UDID_OVERRIDE" '$2 == desired { print; exit }')"
+else
+  device_record="$(printf '%s\n' "$device_candidates" | awk -F'|' -v desired="$IF_SIMULATOR_DEVICE_NAME" '$1 == desired { print; exit }')"
+fi
 if [[ -z "$device_record" ]]; then
-  blocked "an available iPhone Simulator for $IF_SIMULATOR_RUNTIME_VALUE is required"
+  if [[ -n "$IF_SIMULATOR_UDID_OVERRIDE" ]]; then
+    blocked "the requested Simulator $IF_SIMULATOR_UDID_OVERRIDE is not available for $IF_SIMULATOR_RUNTIME_VALUE"
+  fi
+  blocked "the requested Simulator $IF_SIMULATOR_DEVICE_NAME is not available for $IF_SIMULATOR_RUNTIME_VALUE"
 fi
 
 IF_SIMULATOR_NAME_VALUE="${device_record%%|*}"

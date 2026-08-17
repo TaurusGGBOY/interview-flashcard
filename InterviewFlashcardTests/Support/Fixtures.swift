@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 import XCTest
-@testable import InterviewFlashcard
 
 enum Fixtures {
     static let now = Date(timeIntervalSince1970: 1_787_846_400)
@@ -31,7 +30,8 @@ enum Fixtures {
     @MainActor
     static func makeCard(
         context: ModelContext,
-        question: String = "什么是值语义？"
+        question: String = "什么是值语义？",
+        includeReferenceAnswer: Bool = true
     ) throws -> QuestionCardRecord {
         try AppModelContainer.bootstrapOthers(context: context, now: now)
         let topics = try context.fetch(FetchDescriptor<TopicRecord>())
@@ -55,15 +55,17 @@ enum Fixtures {
         )
         context.insert(source)
         context.insert(card)
-        context.insert(
-            ReferenceAnswerVersionRecord(
-                id: UUID(uuidString: "40000000-0000-0000-0000-000000000001")!,
-                version: 1,
-                answerText: "复制后两个值彼此独立。",
-                createdAt: now,
-                question: card
+        if includeReferenceAnswer {
+            context.insert(
+                ReferenceAnswerVersionRecord(
+                    id: UUID(uuidString: "40000000-0000-0000-0000-000000000001")!,
+                    version: 1,
+                    answerText: "复制后两个值彼此独立。",
+                    createdAt: now,
+                    question: card
+                )
             )
-        )
+        }
         try context.save()
         return card
     }
@@ -84,8 +86,9 @@ struct FixedRandomNumberGenerator: RandomNumberGenerator {
     }
 }
 
+@MainActor
 func XCTAssertThrowsErrorAsync<T>(
-    _ expression: () async throws -> T,
+    _ expression: @escaping @MainActor () async throws -> T,
     file: StaticString = #filePath,
     line: UInt = #line,
     _ errorHandler: (Error) -> Void = { _ in }

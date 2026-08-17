@@ -1,62 +1,51 @@
 import SwiftData
 import SwiftUI
 
+struct PracticeLaunchRequest: Equatable, Sendable {
+    let id: UUID
+    let questionID: UUID
+    let startInAnswer: Bool
+
+    init(questionID: UUID, startInAnswer: Bool, id: UUID = UUID()) {
+        self.id = id
+        self.questionID = questionID
+        self.startInAnswer = startInAnswer
+    }
+}
+
 struct PracticeView: View {
     @Query(sort: \TopicRecord.createdAt) private var topics: [TopicRecord]
     @Query(sort: \QuestionCardRecord.activatedAt) private var cards: [QuestionCardRecord]
     @Environment(AppEnvironment.self) private var environment
 
     private let drawService: QuestionDrawService
+    private let launchRequest: PracticeLaunchRequest?
+    private let onLaunchRequestConsumed: () -> Void
     private let onOpenLibrary: () -> Void
 
     @State private var feedState: PracticeFeedState
     @State private var currentCard: QuestionCardSnapshot?
     @State private var answeringCardID: UUID?
+    @State private var historyQuestionID: UUID?
     @State private var seededGenerator: SeededPracticeRandomNumberGenerator?
-    @State private var isFilterPresented = false
     @State private var didInitializeTopicSelection = false
-    @State private var didApplyFilter = false
+    @State private var lastHandledLaunchRequestID: UUID?
 
     init(
         drawService: QuestionDrawService = QuestionDrawService(),
+        launchRequest: PracticeLaunchRequest? = nil,
+        onLaunchRequestConsumed: @escaping () -> Void = {},
         onOpenLibrary: @escaping () -> Void = {}
     ) {
         self.drawService = drawService
+        self.launchRequest = launchRequest
+        self.onLaunchRequestConsumed = onLaunchRequestConsumed
         self.onOpenLibrary = onOpenLibrary
         _feedState = State(initialValue: Self.initialFeedState(topicIDs: []))
     }
 
     nonisolated static func initialFeedState(topicIDs: Set<UUID>) -> PracticeFeedState {
         PracticeFeedState(selectedTopicIDs: topicIDs, includePracticed: false)
-    }
-
-    nonisolated static func applyFilter(
-        _ selection: PracticeFilterSelection,
-        to feedState: inout PracticeFeedState
-    ) {
-        feedState.selectedTopicIDs = selection.selectedTopicIDs
-        feedState.includePracticed = selection.includePracticed
-    }
-
-    private var orderedTopics: [TopicRecord] {
-        topics.sorted { lhs, rhs in
-            if lhs.systemKind == .others, rhs.systemKind != .others { return true }
-            if lhs.systemKind != .others, rhs.systemKind == .others { return false }
-            let comparison = lhs.name.localizedStandardCompare(rhs.name)
-            return comparison == .orderedSame
-                ? lhs.id.uuidString < rhs.id.uuidString
-                : comparison == .orderedAscending
-        }
-    }
-
-    private var topicOptions: [PracticeTopicOption] {
-        orderedTopics.map {
-            PracticeTopicOption(
-                id: $0.id,
-                title: displayName(for: $0),
-                activeCardCount: activeCardCount(for: $0)
-            )
-        }
     }
 
     private var snapshots: [QuestionCardSnapshot] {
@@ -92,70 +81,60 @@ struct PracticeView: View {
         PracticeFeedView(
             card: currentCard,
             emptyReason: emptyReason,
-            isInteractionDisabled: answeringCardID != nil,
+            isAnswering: answeringCardID != nil,
             canUndo: canUndo,
             onSkip: skipCurrent,
             onStartAnswer: startAnswer,
+            onReturnToQuestion: returnToQuestion,
+            onViewHistory: viewHistory,
+            onAttemptSubmitted: handleAttemptSubmitted,
+            onContinueSession: finishAnswer,
             onUndo: undoLastSkip,
-            onOpenFilter: { isFilterPresented = true },
             onOpenLibrary: onOpenLibrary
         )
-        .navigationTitle("练习")
-        .navigationDestination(item: $answeringCardID) { questionID in
-            AnswerEditorView(
-                questionID: questionID,
-                onAttemptSubmitted: handleAttemptSubmitted,
-                onContinueSession: { answeringCardID = nil }
-            )
-        }
-        .sheet(isPresented: $isFilterPresented) {
-            PracticeFilterSheet(
-                topics: topicOptions,
-                initialSelection: PracticeFilterSelection(
-                    selectedTopicIDs: feedState.selectedTopicIDs,
-                    includePracticed: feedState.includePracticed
-                ),
-                onApply: applyFilter
-            )
+        .sheet(isPresented: historySheetBinding) {
+            if let historyQuestionID,
+               let question = cards.first(where: { $0.id == historyQuestionID }) {
+                NavigationStack {
+                    QuestionHistoryView(question: question)
+                }
+            } else {
+                ContentUnavailableView("题目不存在", systemImage: "questionmark.folder")
+            }
         }
         .accessibilityIdentifier(PracticeAccessibilityID.screen)
-        .onAppear(perform: initializeTopicSelectionIfNeeded)
-        .onChange(of: topics.map(\.id)) { _, _ in
+        .onAppear {
             initializeTopicSelectionIfNeeded()
-            refreshDefaultTopicSelectionIfNeeded()
-            reconcileCurrentCard()
+            applyLaunchRequestIfNeeded()
+        }
+        .onChange(of: topics.map(\.id)) { _, _ in
+            applyPersistedSettings()
         }
         .onChange(of: cards.map(\.id)) { _, _ in
-            refreshDefaultTopicSelectionIfNeeded()
             reconcileCurrentCard()
+            applyLaunchRequestIfNeeded()
         }
         .onChange(of: cards.map { $0.attempts.count }) { _, _ in
             reconcileCurrentCard()
         }
-    }
-
-    private func applyFilter(_ selection: PracticeFilterSelection) {
-        var updated = feedState
-        Self.applyFilter(selection, to: &updated)
-        didApplyFilter = true
-
-        // A filter operation is one atomic state transition: the old card and
-        // undo affordance are discarded before the next card is drawn.
-        feedState = PracticeFeedState(
-            selectedTopicIDs: updated.selectedTopicIDs,
-            includePracticed: updated.includePracticed
-        )
-        currentCard = nil
-        answeringCardID = nil
-        drawNextCard()
+        .onChange(of: environment.practiceSettings) { _, _ in
+            applyPersistedSettings()
+        }
+        .onChange(of: launchRequest?.id) { _, _ in
+            applyLaunchRequestIfNeeded()
+        }
     }
 
     private func initializeTopicSelectionIfNeeded() {
         guard !didInitializeTopicSelection else { return }
-        let activeTopicIDs = orderedTopics
-            .filter { activeCardCount(for: $0) > 0 }
-            .map(\.id)
-        feedState = Self.initialFeedState(topicIDs: Set(activeTopicIDs))
+        let validTopicIDs = Set(topics.map(\.id))
+        let settings = environment.reconcilePracticeSettings(
+            validTopicIDs: validTopicIDs
+        )
+        feedState = PracticeFeedState(
+            selectedTopicIDs: settings.resolvedTopicIDs(validTopicIDs: validTopicIDs),
+            includePracticed: settings.includePracticed
+        )
         didInitializeTopicSelection = true
         seededGenerator = environment.launchOptions.randomSeed.map(
             SeededPracticeRandomNumberGenerator.init(seed:)
@@ -163,20 +142,82 @@ struct PracticeView: View {
         drawNextCard()
     }
 
-    private func refreshDefaultTopicSelectionIfNeeded() {
-        guard !didApplyFilter else { return }
-        let activeTopicIDs = Set(
-            orderedTopics
-                .filter { activeCardCount(for: $0) > 0 }
-                .map(\.id)
+    private func applyLaunchRequestIfNeeded() {
+        guard let launchRequest,
+              lastHandledLaunchRequestID != launchRequest.id
+        else { return }
+
+        guard didInitializeTopicSelection else {
+            initializeTopicSelectionIfNeeded()
+            guard didInitializeTopicSelection else { return }
+            applyLaunchRequestIfNeeded()
+            return
+        }
+
+        guard let selectedCard = snapshots.first(where: {
+            $0.id == launchRequest.questionID && !$0.isTrashed
+        }) else {
+            lastHandledLaunchRequestID = launchRequest.id
+            onLaunchRequestConsumed()
+            return
+        }
+
+        feedState.present(selectedCard.id)
+        currentCard = selectedCard
+        answeringCardID = launchRequest.startInAnswer ? selectedCard.id : nil
+        historyQuestionID = nil
+        lastHandledLaunchRequestID = launchRequest.id
+        onLaunchRequestConsumed()
+    }
+
+    private func applyPersistedSettings() {
+        guard didInitializeTopicSelection else {
+            initializeTopicSelectionIfNeeded()
+            return
+        }
+        let validTopicIDs = Set(topics.map(\.id))
+        let settings = environment.reconcilePracticeSettings(
+            validTopicIDs: validTopicIDs
         )
-        guard feedState.selectedTopicIDs != activeTopicIDs else { return }
-        feedState.selectedTopicIDs = activeTopicIDs
+        let selectedTopicIDs = settings.resolvedTopicIDs(
+            validTopicIDs: validTopicIDs
+        )
+        guard feedState.selectedTopicIDs != selectedTopicIDs
+                || feedState.includePracticed != settings.includePracticed
+        else {
+            reconcileCurrentCard()
+            return
+        }
+
+        feedState = PracticeFeedState(
+            selectedTopicIDs: selectedTopicIDs,
+            includePracticed: settings.includePracticed
+        )
+        currentCard = nil
+        answeringCardID = nil
+        drawNextCard()
     }
 
     private func startAnswer() {
         guard let currentCard else { return }
         answeringCardID = currentCard.id
+    }
+
+    private func returnToQuestion() {
+        // Submitting an answer clears the feed state's current question so
+        // the answer flow can advance normally. If the user then returns to
+        // the question card, restore that identity before allowing a skip;
+        // otherwise skipCurrent() has nothing to consume and the same card
+        // remains on screen forever.
+        if let currentCard {
+            feedState.present(currentCard.id)
+        }
+        answeringCardID = nil
+    }
+
+    private func viewHistory() {
+        guard let answeringCardID else { return }
+        historyQuestionID = answeringCardID
     }
 
     private func skipCurrent() {
@@ -193,7 +234,12 @@ struct PracticeView: View {
     }
 
     private func handleAttemptSubmitted(_ questionID: UUID) {
-        guard feedState.answerSubmitted(questionID: questionID) else { return }
+        _ = feedState.answerSubmitted(questionID: questionID)
+    }
+
+    private func finishAnswer() {
+        guard let questionID = answeringCardID else { return }
+        answeringCardID = nil
         currentCard = nil
         drawNextCard(excluding: questionID)
     }
@@ -226,6 +272,11 @@ struct PracticeView: View {
     }
 
     private func reconcileCurrentCard() {
+        if let answeringCardID {
+            currentCard = snapshots.first(where: { $0.id == answeringCardID })
+            return
+        }
+
         guard let currentCard else {
             drawNextCard(excluding: lastActionQuestionID)
             return
@@ -244,11 +295,13 @@ struct PracticeView: View {
         self.currentCard = eligibleCards.first(where: { $0.id == currentCard.id })
     }
 
-    private func activeCardCount(for topic: TopicRecord) -> Int {
-        topic.cards.lazy.filter { !$0.isTrashed }.count
+    private var historySheetBinding: Binding<Bool> {
+        Binding(
+            get: { historyQuestionID != nil },
+            set: { isPresented in
+                if !isPresented { historyQuestionID = nil }
+            }
+        )
     }
 
-    private func displayName(for topic: TopicRecord) -> String {
-        topic.systemKind == .others ? "待分类（Others）" : topic.name
-    }
 }

@@ -22,10 +22,18 @@ struct ReclassificationService {
         }
     }
 
-    private enum ServiceError: Error {
+    private enum ServiceError: Error, Sendable {
         case missingOthersTopic
         case incompleteAssignments
+        case unknownTopic(String)
         case truncatedResponse
+    }
+
+    private struct WorkItem: Sendable {
+        let ordinal: Int
+        let batchID: UUID
+        let cardIDs: Set<UUID>
+        let request: ReclassifyRequest
     }
 
     private let aiClient: any AIClient
@@ -66,7 +74,6 @@ struct ReclassificationService {
         let snapshot = try activeOthers(in: context)
             .sorted { $0.id.uuidString < $1.id.uuidString }
         let topics = try context.fetch(FetchDescriptor<TopicRecord>())
-            .filter { $0.systemKind != .others }
             .sorted(by: TopicService.libraryOrder)
         let availableTopicNames = topics.map(\.name)
         let cardBatches = snapshot.chunked(maximumSize: Self.maximumBatchSize)
@@ -92,55 +99,96 @@ struct ReclassificationService {
         }
         try saveAndExport(context)
 
-        var succeededBatches = 0
-        var failedBatches = 0
+        let persistedTopics = try context.fetch(FetchDescriptor<TopicRecord>())
+        guard persistedTopics.contains(where: { $0.systemKind == .others }) else {
+            throw ServiceError.missingOthersTopic
+        }
+        let topicByName = Dictionary(
+            uniqueKeysWithValues: persistedTopics
+                .filter { availableTopicNames.contains($0.name) }
+                .map { ($0.name, $0) }
+        )
 
+        var workItems: [WorkItem] = []
+        workItems.reserveCapacity(cardBatches.count)
         for (offset, cards) in cardBatches.enumerated() {
             let batchRecord = batchRecords[offset]
+            let request = ReclassifyRequest(
+                batchID: batchRecord.id,
+                cards: cards.map(makeRequestCard),
+                availableTopicNames: availableTopicNames
+            )
+            workItems.append(
+                WorkItem(
+                    ordinal: offset,
+                    batchID: batchRecord.id,
+                    cardIDs: Set(cards.map(\.id)),
+                    request: request
+                )
+            )
             batchRecord.status = .processing
+            batchRecord.errorSummary = nil
             batchRecord.updatedAt = now()
-            try saveAndExport(context)
+        }
+        try saveAndExport(context)
 
+        let client = aiClient
+        let results = await BoundedAITaskRunner.run(inputs: workItems) { item in
+            let response = try await client.reclassify(item.request)
+            try AIResponseValidator.validate(
+                response,
+                for: item.request,
+                enforceTopicWhitelist: true
+            )
+            guard response.completionStatus == .complete else {
+                throw ServiceError.truncatedResponse
+            }
+            return response
+        }
+
+        var succeededBatches = 0
+        var failedBatches = 0
+        let batchesByID = Dictionary(uniqueKeysWithValues: batchRecords.map { ($0.id, $0) })
+        for result in results {
+            let item = workItems[result.index]
+            guard let batchRecord = batchesByID[item.batchID] else { continue }
+            let cards = cardBatches[item.ordinal]
             do {
-                let response = try await aiClient.reclassify(
-                    ReclassifyRequest(
-                        batchID: batchRecord.id,
-                        cards: cards.map(makeRequestCard),
-                        availableTopicNames: availableTopicNames
-                    )
-                )
-                let assignmentByCardID = try validatedAssignments(response, cards: cards)
-                let persistedTopics = try context.fetch(FetchDescriptor<TopicRecord>())
-                guard let others = persistedTopics.first(where: { $0.systemKind == .others }) else {
-                    throw ServiceError.missingOthersTopic
+                guard let response = result.value else {
+                    throw ServiceError.incompleteAssignments
                 }
-                let topicByName = Dictionary(
-                    uniqueKeysWithValues: persistedTopics
-                        .filter { $0.systemKind != .others && availableTopicNames.contains($0.name) }
-                        .map { ($0.name, $0) }
-                )
+                let assignmentByCardID = try validatedAssignments(response, cardIDs: item.cardIDs)
                 let updatedAt = now()
-
                 for card in cards {
-                    let requestedTopic = assignmentByCardID[card.id]
-                    card.topic = requestedTopic.flatMap { topicByName[$0] } ?? others
+                    guard let requestedTopic = assignmentByCardID[card.id],
+                          let destination = topicByName[requestedTopic] else {
+                        throw ServiceError.unknownTopic(
+                            assignmentByCardID[card.id] ?? "<missing>"
+                        )
+                    }
+                    card.topic = destination
                 }
                 batchRecord.status = .completed
                 batchRecord.errorSummary = nil
                 batchRecord.updatedAt = updatedAt
                 run.reclassifiedCards += cards.count
-                try saveAndExport(context)
                 succeededBatches += 1
             } catch {
-                context.rollback()
                 batchRecord.status = .failed
-                batchRecord.errorSummary = safeErrorSummary(error)
+                let errorSummary = result.errorDescription ?? safeErrorSummary(error)
+                batchRecord.errorSummary = errorSummary
+#if DEBUG
+                print(
+                    "IF_RECLASS_BATCH_FAILED batch=\(item.batchID.uuidString) " +
+                    "topics=\(item.request.availableTopicNames) " +
+                    "error=\(errorSummary)"
+                )
+#endif
                 batchRecord.updatedAt = now()
                 run.failedCards += cards.count
-                try saveAndExport(context)
                 failedBatches += 1
             }
-
+            try saveAndExport(context)
             onProgress?(
                 Progress(
                     completedBatches: succeededBatches + failedBatches,
@@ -177,17 +225,16 @@ struct ReclassificationService {
 
     private func validatedAssignments(
         _ response: ReclassifyResponse,
-        cards: [QuestionCardRecord]
+        cardIDs: Set<UUID>
     ) throws -> [UUID: String] {
         guard response.completionStatus == .complete else {
             throw ServiceError.truncatedResponse
         }
 
-        let expectedIDs = Set(cards.map(\.id))
         let responseIDs = response.assignments.map(\.cardID)
-        guard response.assignments.count == cards.count,
+        guard response.assignments.count == cardIDs.count,
               Set(responseIDs).count == responseIDs.count,
-              Set(responseIDs) == expectedIDs
+              Set(responseIDs) == cardIDs
         else {
             throw ServiceError.incompleteAssignments
         }

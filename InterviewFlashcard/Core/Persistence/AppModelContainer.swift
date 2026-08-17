@@ -15,14 +15,12 @@ enum AppModelContainer {
 
     @MainActor
     static func bootstrapOthers(context: ModelContext, now: Date = Date()) throws {
-        let rawKind = SystemTopicKind.others.rawValue
-        let descriptor = FetchDescriptor<TopicRecord>(
-            predicate: #Predicate { topic in
-                topic.systemKindRaw == rawKind
-            }
-        )
-
-        guard try context.fetchCount(descriptor) == 0 else {
+        // Keep this bootstrap query deliberately simple. iOS 27's SwiftData
+        // beta has a runtime trap for `fetchCount` with an optional-string
+        // predicate on an in-memory store; filtering the already tiny topic
+        // table in memory is deterministic and avoids that framework bug.
+        let topics = try context.fetch(FetchDescriptor<TopicRecord>())
+        guard !topics.contains(where: { $0.systemKind == .others }) else {
             return
         }
 

@@ -72,5 +72,10 @@ fi
 mv "$temporary_destination" "$DESTINATION_PATH"
 temporary_destination=""
 
+if ! rm -f "$source_path"; then
+  echo "BLOCKED: screenshot was collected but its source could not be removed: $source_path" >&2
+  exit 1
+fi
+
 echo "Collected $PHASE screenshot: $DESTINATION_PATH"
-echo "Source: $source_path"
+echo "Removed source screenshot: $source_path"

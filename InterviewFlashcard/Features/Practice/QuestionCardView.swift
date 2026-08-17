@@ -24,24 +24,11 @@ struct QuestionCardView: View {
 
                     Spacer(minLength: 14)
 
-                    ScrollView(.vertical) {
-                        Text(card.questionText)
-                            .font(.system(.title2, design: .rounded, weight: .bold))
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(theme.foreground)
-                            .frame(
-                                maxWidth: .infinity,
-                                minHeight: questionAreaHeight,
-                                alignment: .center
-                            )
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                            .accessibilityAddTraits(.isHeader)
-                            .accessibilityIdentifier(PracticeAccessibilityID.question)
-                            .padding(.horizontal, 20)
+                    ViewThatFits(in: .vertical) {
+                        questionText(font: .system(.title2, design: .rounded, weight: .bold), minHeight: questionAreaHeight)
+                        questionText(font: .system(.title3, design: .rounded, weight: .bold), minHeight: questionAreaHeight)
+                        questionText(font: .system(.body, design: .rounded, weight: .semibold), minHeight: questionAreaHeight)
                     }
-                    .scrollIndicators(.hidden)
-                    .scrollBounceBehavior(.basedOnSize)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     Spacer(minLength: 14)
@@ -96,6 +83,21 @@ struct QuestionCardView: View {
                 .background(theme.foreground.opacity(0.14), in: Capsule())
         }
         .frame(minHeight: 44)
+    }
+
+    private func questionText(font: Font, minHeight: CGFloat) -> some View {
+        Text(card.questionText)
+            .font(font)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(theme.foreground)
+            .allowsTightening(true)
+            .minimumScaleFactor(0.78)
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .center)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier(PracticeAccessibilityID.question)
+            .padding(.horizontal, 20)
     }
 
     private var decorativeLayer: some View {

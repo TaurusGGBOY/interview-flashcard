@@ -24,6 +24,10 @@ struct RetryingAIClient: AIClient {
         try await execute { try await base.decompose(request) }
     }
 
+    func referenceAnswer(_ request: ReferenceAnswerRequest) async throws -> ReferenceAnswerResponse {
+        try await execute { try await base.referenceAnswer(request) }
+    }
+
     func refine(_ request: RefineRequest) async throws -> RefineResponse {
         try await execute { try await base.refine(request) }
     }
@@ -38,6 +42,14 @@ struct RetryingAIClient: AIClient {
 
     func evaluate(_ request: EvaluationRequest) async throws -> EvaluationResponse {
         try await execute { try await base.evaluate(request) }
+    }
+
+    func score(_ request: EvaluationScoreRequest) async throws -> EvaluationScoreResponse {
+        try await execute { try await base.score(request) }
+    }
+
+    func evaluationFeedback(_ request: EvaluationFeedbackRequest) async throws -> EvaluationFeedbackResponse {
+        try await execute { try await base.evaluationFeedback(request) }
     }
 
     private func execute<Value: Sendable>(
@@ -62,6 +74,13 @@ struct RetryingAIClient: AIClient {
     }
 
     private func isTransient(_ error: Error) -> Bool {
+        // Provider responses can be HTTP-successful but still violate the
+        // requested structured contract. Treat that as retryable once so a
+        // single malformed generation does not strand an otherwise valid
+        // score/import operation.
+        if error is AIResponseValidationError {
+            return true
+        }
         if let aiError = error as? AIError {
             return aiError.isTransient
         }

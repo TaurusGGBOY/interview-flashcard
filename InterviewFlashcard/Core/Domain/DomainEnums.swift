@@ -10,6 +10,7 @@ enum ImportRunStatus: String, Codable, CaseIterable, Sendable {
     case decomposing
     case refining
     case activating
+    case ready
     case active
     case failed
 }
@@ -23,9 +24,22 @@ enum ImportChunkStatus: String, Codable, CaseIterable, Sendable {
 
 enum QuestionCandidateStatus: String, Codable, CaseIterable, Sendable {
     case pending
+    case extracted
     case refined
     case duplicateWithinBatch
     case invalid
+
+    /// Candidates in these states can still become question cards. Pending
+    /// is the normal state between background extraction and the user's
+    /// confirmation in the file-import flow.
+    var isActivationEligible: Bool {
+        switch self {
+        case .pending, .extracted, .refined:
+            true
+        case .duplicateWithinBatch, .invalid:
+            false
+        }
+    }
 }
 
 enum BatchStatus: String, Codable, CaseIterable, Sendable {
@@ -43,6 +57,9 @@ enum AnswerInputMode: String, Codable, CaseIterable, Sendable {
 
 enum AttemptProcessingStatus: String, Codable, CaseIterable, Sendable {
     case saved
+    case scoring
+    case feedback
+    case referenceAnswer
     case polishing
     case evaluating
     case completed
@@ -50,6 +67,8 @@ enum AttemptProcessingStatus: String, Codable, CaseIterable, Sendable {
 }
 
 enum EvaluationStatus: String, Codable, CaseIterable, Sendable {
+    case scoring
+    case feedback
     case completed
     case failed
     case discarded

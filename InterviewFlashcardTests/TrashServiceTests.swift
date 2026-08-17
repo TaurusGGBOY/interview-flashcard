@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 import XCTest
-@testable import InterviewFlashcard
 
 final class TrashServiceTests: XCTestCase {
     func testExposedAudioCleanupRemovesStoredFile() throws {

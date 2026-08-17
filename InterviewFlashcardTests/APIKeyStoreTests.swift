@@ -1,5 +1,4 @@
 import XCTest
-@testable import InterviewFlashcard
 
 final class APIKeyStoreTests: XCTestCase {
     func testInMemoryStoreSupportsSaveUpdateLoadAndDelete() throws {

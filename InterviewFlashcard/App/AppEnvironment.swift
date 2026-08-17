@@ -175,6 +175,34 @@ public final class AppEnvironment {
         refreshAPIKeyState()
     }
 
+#if DEBUG
+    /// A physical Debug launch receives the provider from the installer via
+    /// process environment. Persist the complete pair once so a later launch
+    /// from the iPhone icon cannot silently fall back to an older provider.
+    @discardableResult
+    func persistInjectedAIConfigurationIfPresent(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        guard let configuration = AIConfigurationEnvironment.configuration(from: environment),
+              let apiKey = environment[AIConfigurationEnvironmentKey.deepSeekAPIKey]?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !apiKey.isEmpty
+        else {
+            return false
+        }
+
+        do {
+            try saveAIConfiguration(configuration, apiKey: apiKey)
+            return true
+        } catch {
+            // The injected values still remain available for this process;
+            // do not print the key or turn a launch into a crash if the
+            // device keychain is temporarily unavailable.
+            return false
+        }
+    }
+#endif
+
     func testAIConnection(
         configuration: AIProviderConfiguration,
         apiKey: String

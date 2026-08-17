@@ -30,39 +30,96 @@ settings:
     DEVELOPMENT_TEAM: ""
 
 targets:
-  InterviewFlashcard:
-    type: application
+  InterviewFlashcardCore:
+    type: framework
     platform: iOS
     sources:
       - path: InterviewFlashcard
+        excludes:
+          - App/InterviewFlashcardApp.swift
+          - App/InterviewFlashcard-Info.plist
+          - Resources
     dependencies:
       - package: Markdown
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaoguobin.InterviewFlashcardCore
+        PRODUCT_NAME: InterviewFlashcardCore
+        DEFINES_MODULE: YES
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_STRICT_CONCURRENCY: complete
+
+  InterviewFlashcard:
+    type: application
+    platform: iOS
+    sources:
+      - path: InterviewFlashcard/App/InterviewFlashcardApp.swift
+      - path: InterviewFlashcard/Resources
+        buildPhase: resources
+    dependencies:
+      - target: InterviewFlashcardCore
+        embed: true
+    settings:
+      base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gaoguobin.InterviewFlashcard
         PRODUCT_NAME: InterviewFlashcard
-        GENERATE_INFOPLIST_FILE: true
-        INFOPLIST_KEY_CFBundleDisplayName: "面试闪卡"
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "用于录制面试回答，录音仅保存在本机。"
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "用于在设备端将面试回答转成文字。"
-        INFOPLIST_KEY_UIFileSharingEnabled: true
-        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: true
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
+        GENERATE_INFOPLIST_FILE: false
+        INFOPLIST_FILE: InterviewFlashcard/App/InterviewFlashcard-Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
         SWIFT_STRICT_CONCURRENCY: complete
     scheme:
       testTargets:
         - InterviewFlashcardTests
+        - InterviewFlashcardUITests
       gatherCoverageData: true
 
   InterviewFlashcardTests:
     type: bundle.unit-test
     platform: iOS
     sources:
+      - path: InterviewFlashcard
+        excludes:
+          - App/InterviewFlashcardApp.swift
+          - App/InterviewFlashcard-Info.plist
+          - Resources
       - path: InterviewFlashcardTests
+        excludes:
+          - TestHost
     dependencies:
-      - target: InterviewFlashcard
+      - package: Markdown
+      - target: InterviewFlashcardTestHost
+      - target: InterviewFlashcardCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gaoguobin.InterviewFlashcardTests
         GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/InterviewFlashcardTestHost.app/InterviewFlashcardTestHost"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_STRICT_CONCURRENCY: complete
+
+  InterviewFlashcardTestHost:
+    type: application
+    platform: iOS
+    sources:
+      - path: InterviewFlashcardTests/TestHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaoguobin.InterviewFlashcardTestHost
+        PRODUCT_NAME: InterviewFlashcardTestHost
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_STRICT_CONCURRENCY: complete
+
+  InterviewFlashcardUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: InterviewFlashcardUITests
+    dependencies:
+      - target: InterviewFlashcard
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaoguobin.InterviewFlashcardUITests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: InterviewFlashcard
         SWIFT_STRICT_CONCURRENCY: complete

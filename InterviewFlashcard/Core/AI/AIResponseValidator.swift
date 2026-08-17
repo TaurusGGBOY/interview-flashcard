@@ -32,11 +32,33 @@ enum AIResponseValidator {
             }
             try requireText(candidate.question, field: "candidate.question")
             try requireText(candidate.sourceBackedAnswerMaterial, field: "candidate.sourceBackedAnswerMaterial")
+            if let request, !request.availableTopicNames.isEmpty {
+                guard let topicName = candidate.topicName,
+                      !topicName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw AIResponseValidationError.emptyField("candidate.topicName")
+                }
+                guard request.availableTopicNames.contains(where: { topicsMatch($0, topicName) }) else {
+                    throw AIResponseValidationError.unknownTopic(topicName)
+                }
+            }
             guard candidate.ordinal >= 0, candidate.ordinal > lastOrdinal else {
                 throw AIResponseValidationError.invalidResponseOrdinal
             }
             lastOrdinal = candidate.ordinal
             try validateAnchors(candidate.sourceAnchors, request: request)
+        }
+    }
+
+    static func validate(_ response: ReferenceAnswerResponse) throws {
+        try requireComplete(response.completionStatus)
+        try requireText(response.answerText, field: "referenceAnswer.answerText")
+        try requireText(response.modelID, field: "referenceAnswer.modelID")
+        try requireText(response.promptVersion, field: "referenceAnswer.promptVersion")
+        guard response.promptVersion == PromptCatalog.referenceAnswerVersion else {
+            throw AIResponseValidationError.promptVersionMismatch(
+                expected: PromptCatalog.referenceAnswerVersion,
+                actual: response.promptVersion
+            )
         }
     }
 
@@ -59,7 +81,7 @@ enum AIResponseValidator {
             try requireText(card.question, field: "card.question")
             try requireText(card.fullScoreAnswer, field: "card.fullScoreAnswer")
             try requireText(card.topicName, field: "card.topicName")
-            if let allowedTopics, !allowedTopics.contains(card.topicName) {
+            if let allowedTopics, !allowedTopics.contains(where: { topicsMatch($0, card.topicName) }) {
                 throw AIResponseValidationError.unknownTopic(card.topicName)
             }
             try validateAnchors(card.sourceAnchors, request: nil)
@@ -69,7 +91,7 @@ enum AIResponseValidator {
     static func validate(
         _ response: ReclassifyResponse,
         for request: ReclassifyRequest,
-        enforceTopicWhitelist: Bool = false
+        enforceTopicWhitelist: Bool = true
     ) throws {
         try requireComplete(response.completionStatus)
         guard request.cards.count <= 50 else {
@@ -84,7 +106,8 @@ enum AIResponseValidator {
                 throw AIResponseValidationError.duplicateID(assignment.cardID.uuidString)
             }
             try requireText(assignment.topicName, field: "reclassification.topicName")
-            guard !enforceTopicWhitelist || allowedTopics.contains(assignment.topicName) else {
+            guard !enforceTopicWhitelist
+                    || allowedTopics.contains(where: { topicsMatch($0, assignment.topicName) }) else {
                 throw AIResponseValidationError.unknownTopic(assignment.topicName)
             }
         }
@@ -154,6 +177,106 @@ enum AIResponseValidator {
             try requireNonEmptyList(response.gapsAndErrors, field: "evaluation.gapsAndErrors")
             try requireNonEmptyList(response.improvements, field: "evaluation.improvements")
         }
+    }
+
+    static func validate(
+        _ response: EvaluationScoreResponse,
+        rubric: EvaluationRubric,
+        expectedPromptVersion: String = PromptCatalog.evaluateScoreVersion
+    ) throws {
+        try requireComplete(response.completionStatus)
+        guard response.promptVersion == expectedPromptVersion else {
+            throw AIResponseValidationError.promptVersionMismatch(
+                expected: expectedPromptVersion,
+                actual: response.promptVersion
+            )
+        }
+        guard response.rubricVersion == rubric.version else {
+            throw AIResponseValidationError.rubricVersionMismatch(
+                expected: rubric.version,
+                actual: response.rubricVersion
+            )
+        }
+        guard (0...1).contains(response.confidence) else {
+            throw AIResponseValidationError.invalidConfidence(response.confidence)
+        }
+        guard (0...100).contains(response.scoreRange.low),
+              (0...100).contains(response.scoreRange.high),
+              response.scoreRange.low <= response.scoreRange.high else {
+            throw AIResponseValidationError.invalidScoreRange
+        }
+        try requireText(response.modelID, field: "evaluation.score.modelID")
+
+        if !response.scorable {
+            guard response.dimensions.isEmpty,
+                  !(response.notScorableReason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) else {
+                throw AIResponseValidationError.invalidScorableState
+            }
+            return
+        }
+
+        guard response.notScorableReason == nil else {
+            throw AIResponseValidationError.invalidScorableState
+        }
+        let expected = Set(rubric.dimensions.map(\.key))
+        var seen = Set<ScoreDimension>()
+        for dimension in response.dimensions {
+            guard expected.contains(dimension.key) else {
+                throw AIResponseValidationError.unexpectedDimension(dimension.key)
+            }
+            guard seen.insert(dimension.key).inserted else {
+                throw AIResponseValidationError.duplicateDimension(dimension.key)
+            }
+            guard (0...100).contains(dimension.score) else {
+                throw AIResponseValidationError.scoreOutOfRange(dimension.key, dimension.score)
+            }
+        }
+        for missing in expected.subtracting(seen) {
+            throw AIResponseValidationError.missingDimension(missing)
+        }
+    }
+
+    static func validate(
+        _ response: EvaluationFeedbackResponse,
+        scores: [EvaluationScoreDimension],
+        rubric: EvaluationRubric,
+        rawText: String,
+        expectedPromptVersion: String = PromptCatalog.evaluateFeedbackVersion
+    ) throws {
+        try requireComplete(response.completionStatus)
+        guard response.promptVersion == expectedPromptVersion else {
+            throw AIResponseValidationError.promptVersionMismatch(
+                expected: expectedPromptVersion,
+                actual: response.promptVersion
+            )
+        }
+        guard response.rubricVersion == rubric.version else {
+            throw AIResponseValidationError.rubricVersionMismatch(
+                expected: rubric.version,
+                actual: response.rubricVersion
+            )
+        }
+        let scoreResponse = EvaluationScoreResponse(
+            scorable: true,
+            notScorableReason: nil,
+            dimensions: scores,
+            confidence: response.confidence,
+            scoreRange: response.scoreRange,
+            warnings: response.warnings,
+            modelID: response.modelID,
+            promptVersion: PromptCatalog.evaluateScoreVersion,
+            rubricVersion: response.rubricVersion,
+            completionStatus: response.completionStatus
+        )
+        try validate(scoreResponse, rubric: rubric)
+        let combined = response.asEvaluationResponse(scores: scores)
+        try validate(
+            combined,
+            rubric: rubric,
+            rawText: rawText,
+            polishedText: rawText,
+            expectedPromptVersion: expectedPromptVersion
+        )
     }
 
     static func validate(
@@ -288,6 +411,10 @@ enum AIResponseValidator {
         guard values.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
             throw AIResponseValidationError.emptyField(field)
         }
+    }
+
+    private static func topicsMatch(_ stored: String, _ proposed: String) -> Bool {
+        TopicNameNormalization.key(stored) == TopicNameNormalization.key(proposed)
     }
 
     private static func contains(_ text: String, quote: String) -> Bool {

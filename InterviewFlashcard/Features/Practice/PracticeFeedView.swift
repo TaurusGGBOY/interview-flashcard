@@ -4,12 +4,15 @@ import UIKit
 struct PracticeFeedView: View {
     let card: QuestionCardSnapshot?
     let emptyReason: PracticeFeedEmptyReason?
-    let isInteractionDisabled: Bool
+    let isAnswering: Bool
     let canUndo: Bool
     let onSkip: () -> Void
     let onStartAnswer: () -> Void
+    let onReturnToQuestion: () -> Void
+    let onViewHistory: () -> Void
+    let onAttemptSubmitted: (UUID) -> Void
+    let onContinueSession: () -> Void
     let onUndo: () -> Void
-    let onOpenFilter: () -> Void
     let onOpenLibrary: () -> Void
 
     var body: some View {
@@ -22,66 +25,91 @@ struct PracticeFeedView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(PracticeAccessibilityID.screen)
     }
 
     @ViewBuilder
     private func cardFeed(_ card: QuestionCardSnapshot) -> some View {
         VStack(spacing: 12) {
-            HStack(spacing: 10) {
-                Label("随机练习", systemImage: "rectangle.stack.fill")
-                    .font(.headline.weight(.semibold))
-                Spacer()
-                Button(action: onOpenFilter) {
-                    Label("筛选", systemImage: "line.3.horizontal.decrease.circle")
-                }
-                .labelStyle(.iconOnly)
-                .frame(width: 44, height: 44)
-                .accessibilityLabel("筛选")
-                .accessibilityIdentifier(PracticeAccessibilityID.filter)
-            }
-            .frame(minHeight: 44)
-
             GeometryReader { proxy in
                 PracticeSwipeActionLayer(
                     cardWidth: max(proxy.size.width, 1),
-                    isInteractionDisabled: isInteractionDisabled,
+                    isInteractionDisabled: false,
+                    skipTitle: isAnswering ? "返回题目" : "跳过",
+                    skipSystemImage: isAnswering ? "arrow.left" : "xmark",
+                    answerTitle: isAnswering ? "查看历史" : "开始回答",
+                    answerSystemImage: isAnswering ? "clock.arrow.circlepath" : "pencil.and.outline",
                     onCommit: { action in
                         switch action {
-                        case .skip: onSkip()
-                        case .answer: onStartAnswer()
+                        case .skip:
+                            if isAnswering { onReturnToQuestion() } else { onSkip() }
+                        case .answer:
+                            if isAnswering { onViewHistory() } else { onStartAnswer() }
                         }
                     }
                 ) {
-                    QuestionCardView(card: card)
+                    ZStack {
+                        if isAnswering {
+                            ZStack {
+                                AnswerEditorView(
+                                    questionID: card.id,
+                                    presentation: .cardBack,
+                                    onAttemptSubmitted: onAttemptSubmitted,
+                                    onContinueSession: onContinueSession
+                                )
+                                .accessibilityIdentifier(PracticeAccessibilityID.cardBack)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .background(Color(uiColor: .systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+                            }
+                            .shadow(color: .black.opacity(0.18), radius: 22, y: 10)
+                            .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+                            .accessibilityIdentifier(PracticeAccessibilityID.cardBackSurface)
+                        } else {
+                            QuestionCardView(card: card)
+                        }
+                    }
+                    .rotation3DEffect(
+                        .degrees(isAnswering ? 180 : 0),
+                        axis: (x: 0, y: 1, z: 0)
+                    )
+                    .animation(.easeInOut(duration: 0.42), value: isAnswering)
                 }
             }
-            .frame(minHeight: 340)
+            .frame(minHeight: 420, maxHeight: .infinity)
 
-            Text("左滑跳过 · 右滑开始回答")
+            Text(isAnswering ? "左滑返回题目 · 右滑查看历史" : "左滑跳过 · 右滑开始回答")
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier(PracticeAccessibilityID.swipeHint)
 
             HStack(spacing: 12) {
-                Button(action: onSkip) {
-                    Label("跳过", systemImage: "xmark")
+                Button {
+                    if isAnswering { onReturnToQuestion() } else { onSkip() }
+                } label: {
+                    Label(isAnswering ? "返回题目" : "跳过", systemImage: isAnswering ? "arrow.left" : "xmark")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .frame(minHeight: 48)
-                .disabled(isInteractionDisabled)
-                .accessibilityIdentifier(PracticeAccessibilityID.skip)
+                .accessibilityIdentifier(isAnswering ? PracticeAccessibilityID.returnToQuestion : PracticeAccessibilityID.skip)
 
-                Button(action: onStartAnswer) {
-                    Label("开始回答", systemImage: "arrow.right")
+                Button {
+                    if isAnswering { onViewHistory() } else { onStartAnswer() }
+                } label: {
+                    Label(isAnswering ? "查看历史" : "开始回答", systemImage: isAnswering ? "clock.arrow.circlepath" : "arrow.right")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
                 .frame(minHeight: 48)
-                .disabled(isInteractionDisabled)
-                .accessibilityIdentifier(PracticeAccessibilityID.answer)
+                .accessibilityIdentifier(isAnswering ? PracticeAccessibilityID.viewHistory : PracticeAccessibilityID.answer)
             }
 
             if canUndo {
@@ -92,7 +120,6 @@ struct PracticeFeedView: View {
         }
         .safeAreaPadding(.horizontal, 18)
         .safeAreaPadding(.vertical, 12)
-        .accessibilityIdentifier(PracticeAccessibilityID.screen)
     }
 
     @ViewBuilder
@@ -108,15 +135,17 @@ struct PracticeFeedView: View {
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier(PracticeAccessibilityID.emptyLibrary)
             }
+        case .noTopicsSelected:
+            ContentUnavailableView {
+                Label("尚未选择练习主题", systemImage: "checklist")
+            } description: {
+                Text("请前往“设置 → 练习设置”选择至少一个主题。")
+            }
         case .filteredPoolEmpty:
             ContentUnavailableView {
-                Label("当前筛选没有题目", systemImage: "line.3.horizontal.decrease.circle")
+                Label("当前设置没有可练习题", systemImage: "rectangle.stack.badge.minus")
             } description: {
-                Text("可以调整 Topic，或开启“包含已练习题”。")
-            } actions: {
-                Button("调整筛选", action: onOpenFilter)
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier(PracticeAccessibilityID.emptyFilter)
+                Text("可在“设置 → 练习设置”更换主题或开启“包含已练习题”。")
             }
         case nil:
             ProgressView("正在准备题目…")

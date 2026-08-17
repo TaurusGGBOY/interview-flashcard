@@ -26,10 +26,10 @@
 | 类型 | 默认 Base URL | 默认模型 | 请求路径 |
 | --- | --- | --- | --- |
 | OpenAI | `https://api.openai.com` | `gpt-5.6-terra` | `/v1/responses` |
-| OpenAI 兼容 | `https://api.deepseek.com` | `deepseek-v4-flash` | `/chat/completions` |
+| OpenAI 兼容 | `https://opencode.ai/zen/go` | `deepseek-v4-flash` | `/chat/completions` |
 | Anthropic | `https://api.anthropic.com` | `claude-sonnet-5` | `/v1/messages` |
 
-默认模型依据实现时的官方模型说明选择；它们只是初始值，用户可以自由修改。OpenAI 的模型与 Responses API 以 [OpenAI Models](https://developers.openai.com/api/docs/models) 和 [OpenAI API Quickstart](https://platform.openai.com/docs/quickstart/make-your-first-api-request) 为准；Anthropic 的模型与 Messages API 以 [Anthropic Models](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions) 和 [Messages API](https://platform.claude.com/docs/en/api/messages) 为准；OpenAI 兼容默认值继续采用 [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion)。
+默认模型依据实现时的官方模型说明选择；它们只是初始值，用户可以自由修改。OpenAI 的模型与 Responses API 以 [OpenAI Models](https://developers.openai.com/api/docs/models) 和 [OpenAI API Quickstart](https://platform.openai.com/docs/quickstart/make-your-first-api-request) 为准；Anthropic 的模型与 Messages API 以 [Anthropic Models](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions) 和 [Messages API](https://platform.claude.com/docs/en/api/messages) 为准。项目默认服务是 OpenCode Go 订阅（`https://opencode.ai/zen/go`），只暴露 OpenAI Responses API（`/v1/responses`），不提供 Chat Completions；默认配置直接使用 `.openCodeGo`（OpenAI 类型），OpenAI 兼容类型仅用于支持 `/chat/completions` 的自建网关。
 
 `AIProviderConfiguration` 保存类型、Base URL 和模型。非敏感字段写入 `UserDefaults`；API Key 继续由 `APIKeyStore` 存入 Keychain。Stub 客户端只用于测试和启动参数覆盖，不显示在用户可选类型中。
 
@@ -100,10 +100,10 @@ AI 服务页包含类型选择、Base URL、模型、SecureField API Key、“�
 
 ## 兼容性与迁移
 
-首次读取新版配置时执行幂等迁移：
+首次读取新版配置时执行幂等迁移（migration v3）：
 
-- 现有 DeepSeek provider 映射为 OpenAI 兼容。
-- Base URL 使用 `https://api.deepseek.com`。
+- 旧的内置 DeepSeek 默认值（OpenAI 兼容 + `https://api.deepseek.com` + `deepseek-v4-flash`）映射为 `.openCodeGo`。
+- v2 曾把 OpenCode Go 路由到 Anthropic Messages（`/v1/messages`），该协议与中继不符；v3 把 `anthropic + https://opencode.ai/zen/go + deepseek-v4-flash` 重写为 OpenAI Responses 配置。
 - 保留已有 DeepSeek 模型；没有值时使用 `deepseek-v4-flash`。
 - 继续读取现有 Keychain service/account 中的 API Key，避免用户重新录入。
 - 写入新版迁移标记；之后不再用旧值覆盖用户保存的新配置。

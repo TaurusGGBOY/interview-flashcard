@@ -9,8 +9,9 @@ enum TrashAccessibilityID {
 }
 
 struct TrashView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
-    @Query(sort: \.trashedAt, order: .reverse) private var cards: [QuestionCardRecord]
+    @Query(sort: \QuestionCardRecord.trashedAt, order: .reverse) private var cards: [QuestionCardRecord]
     @State private var cardToDelete: QuestionCardRecord?
     @State private var deletionImpact: TrashService.DeletionImpact?
     @State private var showPermanentConfirmation = false
@@ -43,6 +44,14 @@ struct TrashView: View {
             }
         }
         .navigationTitle("回收站")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("关闭", systemImage: "xmark") {
+                    dismiss()
+                }
+                .accessibilityIdentifier("trash.close")
+            }
+        }
         .accessibilityIdentifier(TrashAccessibilityID.screen)
         .alert("无法完成操作", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("好", role: .cancel) { errorMessage = nil }

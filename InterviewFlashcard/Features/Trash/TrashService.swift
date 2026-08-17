@@ -49,6 +49,25 @@ struct TrashService {
         try context.save()
     }
 
+    func moveToTrash(cardIDs: [UUID], context: ModelContext) throws {
+        let ids = Set(cardIDs)
+        guard !ids.isEmpty else { return }
+
+        let cards = try context.fetch(FetchDescriptor<QuestionCardRecord>())
+        let selectedCards = cards.filter { ids.contains($0.id) }
+        guard selectedCards.count == ids.count else { throw TrashError.questionNotFound }
+        guard selectedCards.allSatisfy({ $0.trashedAt == nil }) else {
+            throw TrashError.alreadyTrashed
+        }
+
+        let timestamp = now()
+        for card in selectedCards {
+            card.trashedAt = timestamp
+            card.updatedAt = timestamp
+        }
+        try context.save()
+    }
+
     func restore(cardID: UUID, context: ModelContext) throws {
         let card = try card(cardID, context: context)
         guard card.trashedAt != nil else { throw TrashError.notTrashed }
