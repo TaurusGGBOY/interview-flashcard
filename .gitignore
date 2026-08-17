@@ -7,3 +7,19 @@ xcuserdata/
 diagnostics/mac-ui/
 .DS_Store
 .codebase-memory/
+
+# Local build products and generated test artifacts
+.build/
+build/
+diagnostics/
+*.xcresult
+*.xccovreport
+
+# Local screenshots and generated launch helpers
+/desktop_shot.jpg
+/._InterviewFlashcard.xcodeproj/
+/Open InterviewFlashcard.command
+
+# Local agent/tooling state
+.agents/
+.local/
