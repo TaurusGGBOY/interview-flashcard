@@ -35,7 +35,7 @@ struct QuestionCardView: View {
 
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.left.arrow.right")
-                        Text("左右滑动选择操作")
+                        Text("左右滑动选择操作 · 上划删除本题")
                     }
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(theme.foreground.opacity(0.88))

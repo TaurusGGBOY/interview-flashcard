@@ -41,6 +41,33 @@ final class AnswerProcessingServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testForceRescoreCreatesNewEvaluationForSameAttempt() async throws {
+        let context = try TestModelContainer.make().mainContext
+        let card = try Fixtures.makeCard(context: context)
+        let attempt = try AnswerSubmissionService().submitText(
+            questionID: card.id,
+            rawText: "回答",
+            context: context
+        )
+        let client = RecordingAIClient()
+        let service = AnswerProcessingService(aiClient: client)
+
+        let first = try await service.score(attemptID: attempt.id, context: context)
+        let reused = try await service.score(attemptID: attempt.id, context: context)
+        let rescored = try await service.score(
+            attemptID: attempt.id,
+            context: context,
+            forceRescore: true
+        )
+
+        XCTAssertEqual(first.id, reused.id)
+        XCTAssertNotEqual(first.id, rescored.id)
+        XCTAssertEqual(attempt.evaluations.count, 2)
+        let evaluateCallCount = await client.evaluateCallCount()
+        XCTAssertEqual(evaluateCallCount, 2)
+    }
+
+    @MainActor
     func testProcessingFailureKeepsAttemptAndAllowsExplicitRetry() async throws {
         let context = try TestModelContainer.make().mainContext
         let card = try Fixtures.makeCard(context: context)

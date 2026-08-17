@@ -53,6 +53,10 @@ struct HistoryQuery {
 struct AttemptDetailView: View {
     let attempt: AnswerAttemptRecord
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @Environment(AppEnvironment.self) private var environment
+    @State private var isRescoring = false
+    @State private var errorMessage: String?
 
     private var latestPolish: PolishResultRecord? {
         attempt.polishResults.max {
@@ -128,6 +132,14 @@ struct AttemptDetailView: View {
                 Section("处理状态") {
                     Text(failure)
                         .foregroundStyle(.red)
+                    Button {
+                        rescore()
+                    } label: {
+                        Label("重新评分", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(isRescoring)
+                    if isRescoring { ProgressView("正在评分…") }
+                    if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
         }
@@ -142,6 +154,26 @@ struct AttemptDetailView: View {
             }
         }
         .accessibilityIdentifier("history.attempt.detail")
+    }
+
+    private func rescore() {
+        guard !isRescoring else { return }
+        isRescoring = true
+        errorMessage = nil
+        Task { @MainActor in
+            do {
+                let service = AnswerProcessingService(
+                    aiClient: environment.dependencies.aiClient,
+                    now: environment.dependencies.now,
+                    diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
+                )
+                _ = try await service.score(attemptID: attempt.id, context: context, forceRescore: true)
+                isRescoring = false
+            } catch {
+                errorMessage = error.localizedDescription
+                isRescoring = false
+            }
+        }
     }
 
 }

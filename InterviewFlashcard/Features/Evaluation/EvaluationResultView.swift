@@ -4,6 +4,7 @@ struct EvaluationResultView: View {
     let evaluation: EvaluationRecord
     let onContinue: () -> Void
     let onClose: (() -> Void)?
+    let onRescore: (() -> Void)?
     let continueTitle: String
     let continueSystemImage: String
 
@@ -13,12 +14,14 @@ struct EvaluationResultView: View {
         evaluation: EvaluationRecord,
         onContinue: @escaping () -> Void,
         onClose: (() -> Void)? = nil,
+        onRescore: (() -> Void)? = nil,
         continueTitle: String = "下一题",
         continueSystemImage: String = "arrow.right"
     ) {
         self.evaluation = evaluation
         self.onContinue = onContinue
         self.onClose = onClose
+        self.onRescore = onRescore
         self.continueTitle = continueTitle
         self.continueSystemImage = continueSystemImage
     }
@@ -45,6 +48,18 @@ struct EvaluationResultView: View {
                 }
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("answer-editor.result.history")
+
+                if let onRescore {
+                    Button {
+                        onRescore()
+                    } label: {
+                        Label("重新评分", systemImage: "arrow.clockwise")
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 48)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("answer-editor.result.rescore")
+                }
 
                 Button {
                     onContinue()

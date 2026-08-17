@@ -5,7 +5,7 @@ enum AIConfigurationSettingsKey {
     static let baseURL = "settings.ai.configuration.base-url"
     static let model = "settings.ai.configuration.model"
     static let migrationVersion = "settings.ai.configuration.migration-version"
-    static let currentMigrationVersion = 4
+    static let currentMigrationVersion = 5
 
     /// Kept only to recognize the legacy built-in value during migration.
     /// New configurations must never use api.deepseek.com (it is pay-per-use;
@@ -21,8 +21,7 @@ enum AIConfigurationEnvironmentKey {
     /// cc-switch endpoint.
     static let deepSeekBaseURL = "INTERVIEW_FLASHCARD_DEEPSEEK_BASE_URL"
     static let deepSeekModel = "INTERVIEW_FLASHCARD_DEEPSEEK_MODEL"
-    /// The active provider can expose the OpenAI Responses API rather than
-    /// Chat Completions. Keep this explicit so a relay is never contacted
+    /// The active provider protocol is explicit so a relay is never contacted
     /// with the wrong request/response protocol.
     static let deepSeekProvider = "INTERVIEW_FLASHCARD_DEEPSEEK_PROVIDER"
     static let deepSeekAPIKey = "INTERVIEW_FLASHCARD_DEEPSEEK_API_KEY"
@@ -86,7 +85,7 @@ final class UserDefaultsAIConfigurationStore: AIConfigurationStore, @unchecked S
                         ?? provider.defaultConfiguration.model
                 )
             } else {
-                // Fresh installs default to OpenCode Go (OpenAI Responses).
+                // Fresh installs default to OpenCode Go Chat Completions.
                 stored = .openCodeGo
             }
             guard let validated = try? stored.validated() else {
@@ -178,6 +177,18 @@ final class UserDefaultsAIConfigurationStore: AIConfigurationStore, @unchecked S
                 persist(.openCodeGo)
             }
             userDefaults.set(4, forKey: AIConfigurationSettingsKey.migrationVersion)
+        }
+
+        if storedVersion < 5 {
+            // OpenCode Go documents MiMo V2.5 on the OpenAI-compatible Chat
+            // Completions endpoint. Migrate the previous Responses selection
+            // so the app does not receive an empty Responses `output` array.
+            if provider == .openAI,
+               baseURL == "https://opencode.ai/zen/go",
+               model == "mimo-v2.5" {
+                persist(.openCodeGo)
+            }
+            userDefaults.set(5, forKey: AIConfigurationSettingsKey.migrationVersion)
         }
     }
 

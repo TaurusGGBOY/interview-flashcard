@@ -4,6 +4,7 @@ import Foundation
 enum PracticeSwipeAction: Equatable, Sendable {
     case skip
     case answer
+    case delete
 }
 
 struct PracticeSwipeInteraction: Sendable {
@@ -16,15 +17,25 @@ struct PracticeSwipeInteraction: Sendable {
         cardWidth: CGFloat
     ) -> PracticeSwipeAction? {
         guard cardWidth > 0 else { return nil }
-        guard abs(translation.width) >= minimumHorizontalIntent else { return nil }
-        guard abs(translation.width) > abs(translation.height) else { return nil }
 
         let threshold = cardWidth * distanceThresholdRatio
-        guard abs(translation.width) >= threshold
-            || abs(predictedEndTranslation.width) >= threshold
-        else {
-            return nil
+        let horizontalDistance = abs(translation.width)
+        let verticalDistance = abs(translation.height)
+
+        if verticalDistance > horizontalDistance {
+            guard translation.height < 0,
+                  verticalDistance >= minimumHorizontalIntent,
+                  verticalDistance >= threshold
+                    || abs(predictedEndTranslation.height) >= threshold
+            else { return nil }
+
+            return .delete
         }
+
+        guard horizontalDistance >= minimumHorizontalIntent,
+              horizontalDistance >= threshold
+                || abs(predictedEndTranslation.width) >= threshold
+        else { return nil }
 
         return translation.width < 0 ? .skip : .answer
     }
@@ -35,10 +46,17 @@ struct PracticeSwipeInteraction: Sendable {
         cardWidth: CGFloat
     ) -> Bool {
         guard cardWidth > 0 else { return false }
-        guard abs(currentTranslation.width) > abs(currentTranslation.height) else { return false }
         let threshold = cardWidth * distanceThresholdRatio
-        let previousDistance = abs(previousTranslation.width)
-        let currentDistance = abs(currentTranslation.width)
+        let isVerticalIntent = abs(currentTranslation.height) > abs(currentTranslation.width)
+        if isVerticalIntent {
+            guard currentTranslation.height < 0 else { return false }
+        }
+        let previousDistance = isVerticalIntent
+            ? abs(previousTranslation.height)
+            : abs(previousTranslation.width)
+        let currentDistance = isVerticalIntent
+            ? abs(currentTranslation.height)
+            : abs(currentTranslation.width)
         return previousDistance < threshold && currentDistance >= threshold
     }
 

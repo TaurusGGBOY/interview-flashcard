@@ -28,6 +28,39 @@ final class AIProviderAdapterTests: XCTestCase {
         )
     }
 
+    func testOpenAIResponsesAcceptsTopLevelOutputTextFromCompatibleGateway() throws {
+        let adapter = AIProviderAdapterFactory.make(for: .openAI)
+        let request = try makeRequest(adapter: adapter, provider: .openAI)
+        let data = Data(#"{"output_text":"{\"scorable\":true}"}"#.utf8)
+
+        XCTAssertEqual(
+            try adapter.responseText(from: data, response: response(for: request, status: 200)),
+            "{\"scorable\":true}"
+        )
+    }
+
+    func testOpenAIResponsesAcceptsChatCompatibleChoicesFromGateway() throws {
+        let adapter = AIProviderAdapterFactory.make(for: .openAI)
+        let request = try makeRequest(adapter: adapter, provider: .openAI)
+        let data = Data(#"{"choices":[{"message":{"content":"{\"scorable\":true}"}}]}"#.utf8)
+
+        XCTAssertEqual(
+            try adapter.responseText(from: data, response: response(for: request, status: 200)),
+            "{\"scorable\":true}"
+        )
+    }
+
+    func testOpenAIResponsesAcceptsValueFieldFromCompatibleGateway() throws {
+        let adapter = AIProviderAdapterFactory.make(for: .openAI)
+        let request = try makeRequest(adapter: adapter, provider: .openAI)
+        let data = Data(#"{"output":[{"type":"message","content":[{"type":"output_text","value":"{\"scorable\":true}"}]}]}"#.utf8)
+
+        XCTAssertEqual(
+            try adapter.responseText(from: data, response: response(for: request, status: 200)),
+            "{\"scorable\":true}"
+        )
+    }
+
     func testOpenAIPlainTextRequestOmitsStructuredFormat() throws {
         let adapter = AIProviderAdapterFactory.make(for: .openAI)
         let request = try makeRequest(adapter: adapter, provider: .openAI, mode: .plainText)
@@ -46,7 +79,7 @@ final class AIProviderAdapterTests: XCTestCase {
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
 
-        XCTAssertEqual(request.url?.absoluteString, "https://opencode.ai/zen/go/chat/completions")
+        XCTAssertEqual(request.url?.absoluteString, "https://opencode.ai/zen/go/v1/chat/completions")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret-marker")
         XCTAssertEqual(messages.map { $0["role"] as? String }, ["system", "user"])
         XCTAssertEqual(responseFormat["type"] as? String, "json_schema")

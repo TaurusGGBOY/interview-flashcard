@@ -46,7 +46,7 @@ final class AppShellTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("Never create a candidate from a bare noun"))
         XCTAssertTrue(prompt.contains("Kubernetes/K8S"))
-        XCTAssertEqual(PromptCatalog.decomposeVersion, "decompose-extraction-v5")
+        XCTAssertEqual(PromptCatalog.decomposeVersion, "decompose-extraction-v6")
     }
 
     @MainActor

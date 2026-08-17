@@ -32,6 +32,30 @@ final class PracticeFeedStateTests: XCTestCase {
         XCTAssertEqual(state.currentQuestionID, firstID)
     }
 
+    func testPresentThenDeleteRecordsUndoableDeletion() {
+        var state = PracticeFeedState(selectedTopicIDs: [topicID])
+        state.present(questionID: firstID)
+
+        XCTAssertEqual(state.deleteCurrent(), firstID)
+        XCTAssertNil(state.currentQuestionID)
+        XCTAssertEqual(state.lastAction, .deleted(questionID: firstID))
+
+        XCTAssertEqual(state.undoLastDelete(), firstID)
+        XCTAssertEqual(state.currentQuestionID, firstID)
+        XCTAssertNil(state.lastAction)
+    }
+
+    func testUndoDeleteDoesNotUndoAnOlderDeletionAfterAnotherAction() {
+        var state = PracticeFeedState(selectedTopicIDs: [topicID])
+        state.present(questionID: firstID)
+        _ = state.deleteCurrent()
+        state.present(questionID: secondID)
+        _ = state.skipCurrent()
+
+        XCTAssertNil(state.undoLastDelete())
+        XCTAssertEqual(state.lastAction, .skipped(questionID: secondID))
+    }
+
     func testAnswerClearsCurrentAndRecordsUndoableAnswerWithoutPersistenceMutation() {
         var state = PracticeFeedState(
             selectedTopicIDs: [topicID],

@@ -5,8 +5,9 @@ struct PracticeFeedView: View {
     let card: QuestionCardSnapshot?
     let emptyReason: PracticeFeedEmptyReason?
     let isAnswering: Bool
-    let canUndo: Bool
+    let undoTitle: String?
     let onSkip: () -> Void
+    let onDelete: () -> Void
     let onStartAnswer: () -> Void
     let onReturnToQuestion: () -> Void
     let onViewHistory: () -> Void
@@ -40,12 +41,15 @@ struct PracticeFeedView: View {
                     skipSystemImage: isAnswering ? "arrow.left" : "xmark",
                     answerTitle: isAnswering ? "查看历史" : "开始回答",
                     answerSystemImage: isAnswering ? "clock.arrow.circlepath" : "pencil.and.outline",
+                    canDelete: !isAnswering,
                     onCommit: { action in
                         switch action {
                         case .skip:
                             if isAnswering { onReturnToQuestion() } else { onSkip() }
                         case .answer:
                             if isAnswering { onViewHistory() } else { onStartAnswer() }
+                        case .delete:
+                            if !isAnswering { onDelete() }
                         }
                     }
                 ) {
@@ -83,7 +87,7 @@ struct PracticeFeedView: View {
             }
             .frame(minHeight: 420, maxHeight: .infinity)
 
-            Text(isAnswering ? "左滑返回题目 · 右滑查看历史" : "左滑跳过 · 右滑开始回答")
+            Text(isAnswering ? "左滑返回题目 · 右滑查看历史" : "左滑跳过 · 右滑开始回答 · 上划删除本题")
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier(PracticeAccessibilityID.swipeHint)
@@ -112,8 +116,8 @@ struct PracticeFeedView: View {
                 .accessibilityIdentifier(isAnswering ? PracticeAccessibilityID.viewHistory : PracticeAccessibilityID.answer)
             }
 
-            if canUndo {
-                Button("撤销跳过", action: onUndo)
+            if let undoTitle {
+                Button(undoTitle, action: onUndo)
                     .buttonStyle(.borderless)
                     .accessibilityIdentifier(PracticeAccessibilityID.undo)
             }
@@ -124,31 +128,39 @@ struct PracticeFeedView: View {
 
     @ViewBuilder
     private var emptyFeed: some View {
-        switch emptyReason {
-        case .globalLibraryEmpty:
-            ContentUnavailableView {
-                Label("题库还是空的", systemImage: "books.vertical")
-            } description: {
-                Text("先导入一份 Markdown 题库，再开始练习。")
-            } actions: {
-                Button("去题库导入", action: onOpenLibrary)
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier(PracticeAccessibilityID.emptyLibrary)
+        VStack(spacing: 12) {
+            switch emptyReason {
+            case .globalLibraryEmpty:
+                ContentUnavailableView {
+                    Label("题库还是空的", systemImage: "books.vertical")
+                } description: {
+                    Text("先导入一份 Markdown 题库，再开始练习。")
+                } actions: {
+                    Button("去题库导入", action: onOpenLibrary)
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier(PracticeAccessibilityID.emptyLibrary)
+                }
+            case .noTopicsSelected:
+                ContentUnavailableView {
+                    Label("尚未选择练习主题", systemImage: "checklist")
+                } description: {
+                    Text("请前往“设置 → 练习设置”选择至少一个主题。")
+                }
+            case .filteredPoolEmpty:
+                ContentUnavailableView {
+                    Label("当前设置没有可练习题", systemImage: "rectangle.stack.badge.minus")
+                } description: {
+                    Text("可在“设置 → 练习设置”更换主题或开启“包含已练习题”。")
+                }
+            case nil:
+                ProgressView("正在准备题目…")
             }
-        case .noTopicsSelected:
-            ContentUnavailableView {
-                Label("尚未选择练习主题", systemImage: "checklist")
-            } description: {
-                Text("请前往“设置 → 练习设置”选择至少一个主题。")
+
+            if let undoTitle {
+                Button(undoTitle, action: onUndo)
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier(PracticeAccessibilityID.undo)
             }
-        case .filteredPoolEmpty:
-            ContentUnavailableView {
-                Label("当前设置没有可练习题", systemImage: "rectangle.stack.badge.minus")
-            } description: {
-                Text("可在“设置 → 练习设置”更换主题或开启“包含已练习题”。")
-            }
-        case nil:
-            ProgressView("正在准备题目…")
         }
     }
 }

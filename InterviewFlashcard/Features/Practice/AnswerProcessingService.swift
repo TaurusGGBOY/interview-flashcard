@@ -35,9 +35,14 @@ struct AnswerProcessingService {
     /// EvaluationRecord is persisted before this method returns, so the UI can
     /// render the total and dimension scores without waiting for prose.
     @discardableResult
-    func score(attemptID: UUID, context: ModelContext) async throws -> EvaluationRecord {
+    func score(
+        attemptID: UUID,
+        context: ModelContext,
+        forceRescore: Bool = false
+    ) async throws -> EvaluationRecord {
         let attempt = try fetchAttempt(attemptID, context: context)
-        if let existing = latestEvaluation(for: attempt),
+        if !forceRescore,
+           let existing = latestEvaluation(for: attempt),
            existing.status == .feedback || existing.status == .completed {
             return existing
         }

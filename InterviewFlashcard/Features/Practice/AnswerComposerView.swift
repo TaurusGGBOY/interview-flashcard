@@ -47,6 +47,12 @@ struct AnswerComposerView: View {
         }
         .padding(16)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onChange(of: text) { _, newValue in
+            guard !isSubmitting, newValue.last == "\n" else { return }
+            text.removeLast()
+            isEditorFocused = false
+            onSubmit()
+        }
         // Keep the primary action reachable while the keyboard is shown.
         // The scroll view can still pan, but the keyboard toolbar guarantees
         // that submitting does not depend on first dismissing the keyboard.

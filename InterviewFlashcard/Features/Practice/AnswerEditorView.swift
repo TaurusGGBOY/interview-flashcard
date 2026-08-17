@@ -91,7 +91,8 @@ struct AnswerEditorView: View {
                     EvaluationResultView(
                         evaluation: processingResult,
                         onContinue: continueFromResult,
-                        onClose: { isShowingResult = false }
+                        onClose: { isShowingResult = false },
+                        onRescore: rescoreCurrentAttempt
                     )
                 }
                 .presentationDetents([.medium, .large])
@@ -218,7 +219,7 @@ struct AnswerEditorView: View {
         process(attemptID: attempt.id)
     }
 
-    private func process(attemptID: UUID) {
+    private func process(attemptID: UUID, forceRescore: Bool = false) {
         isProcessing = true
         errorMessage = nil
         Task { @MainActor in
@@ -228,7 +229,11 @@ struct AnswerEditorView: View {
                     now: environment.dependencies.now,
                     diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
                 )
-                let evaluation = try await service.score(attemptID: attemptID, context: modelContext)
+                let evaluation = try await service.score(
+                    attemptID: attemptID,
+                    context: modelContext,
+                    forceRescore: forceRescore
+                )
                 // Publish the numeric result immediately. The following two
                 // requests intentionally continue after the result page is
                 // visible.
@@ -262,5 +267,12 @@ struct AnswerEditorView: View {
         if presentation == .screen {
             dismiss()
         }
+    }
+
+    private func rescoreCurrentAttempt() {
+        guard let attemptID = submittedAttemptID, !isProcessing else { return }
+        isShowingResult = false
+        processingResult = nil
+        process(attemptID: attemptID, forceRescore: true)
     }
 }

@@ -138,8 +138,8 @@ struct ConfiguredAIClient: AIClient {
             scoreRange: response.scoreRange,
             warnings: response.warnings,
             modelID: configuration.model,
-            promptVersion: response.promptVersion,
-            rubricVersion: response.rubricVersion,
+            promptVersion: PromptCatalog.evaluateScoreVersion,
+            rubricVersion: request.rubric.version,
             completionStatus: response.completionStatus
         )
         try AIResponseValidator.validate(canonicalResponse, rubric: request.rubric)
@@ -234,26 +234,50 @@ struct ConfiguredAIClient: AIClient {
         guard let responseData = text.data(using: .utf8) else {
             throw AIError.invalidResponse("Provider content was not UTF-8")
         }
-        if let response = try? decoder.decode(Response.self, from: responseData) {
-            return response
-        }
+        do {
+            return try decoder.decode(Response.self, from: responseData)
+        } catch let error {
+            let decodeDetail = Self.describeDecodingError(error)
 
-        // Some compatible providers still wrap structured output in a code
-        // fence or add a short preamble despite being asked for JSON. Keep the
-        // strict direct decode first, then salvage only the single JSON object
-        // so the lazy first-answer request is not rejected for presentation
-        // noise around an otherwise valid response.
-        guard let firstBrace = text.firstIndex(of: "{"),
-              let lastBrace = text.lastIndex(of: "}"),
-              firstBrace < lastBrace else {
-            throw AIError.malformedStructuredResponse
+            // Some compatible providers still wrap structured output in a
+            // code fence or add a short preamble. Keep the strict direct
+            // decode first, then salvage only the single JSON object.
+            guard let firstBrace = text.firstIndex(of: "{"),
+                  let lastBrace = text.lastIndex(of: "}"),
+                  firstBrace < lastBrace else {
+                throw AIError.invalidResponse("结构化评分 JSON 解码失败：\(decodeDetail)")
+            }
+
+            let objectText = String(text[firstBrace...lastBrace])
+            guard let objectData = objectText.data(using: .utf8) else {
+                throw AIError.invalidResponse("结构化评分 JSON 不是 UTF-8：\(decodeDetail)")
+            }
+            do {
+                return try decoder.decode(Response.self, from: objectData)
+            } catch let salvageError {
+                throw AIError.invalidResponse(
+                    "结构化评分 JSON 解码失败：\(Self.describeDecodingError(salvageError))"
+                )
+            }
         }
-        let objectText = String(text[firstBrace...lastBrace])
-        guard let objectData = objectText.data(using: .utf8),
-              let response = try? decoder.decode(Response.self, from: objectData) else {
-            throw AIError.malformedStructuredResponse
+    }
+
+    private static func describeDecodingError(_ error: Error) -> String {
+        guard let decodingError = error as? DecodingError else {
+            return String(describing: error)
         }
-        return response
+        switch decodingError {
+        case let .keyNotFound(key, context):
+            return "缺少字段 \(key.stringValue)（\(context.codingPath.map(\.stringValue).joined(separator: "."))）"
+        case let .typeMismatch(type, context):
+            return "字段类型不匹配 \(type)（\(context.codingPath.map(\.stringValue).joined(separator: "."))）"
+        case let .valueNotFound(type, context):
+            return "字段为空 \(type)（\(context.codingPath.map(\.stringValue).joined(separator: "."))）"
+        case let .dataCorrupted(context):
+            return "字段数据损坏（\(context.codingPath.map(\.stringValue).joined(separator: "."))）"
+        @unknown default:
+            return String(describing: error)
+        }
     }
 
     private func maxOutputTokens(for operation: AIOperation) -> Int? {

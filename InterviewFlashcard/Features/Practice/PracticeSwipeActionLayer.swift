@@ -8,6 +8,9 @@ struct PracticeSwipeActionLayer<Content: View>: View {
     let skipSystemImage: String
     let answerTitle: String
     let answerSystemImage: String
+    let canDelete: Bool
+    let deleteTitle: String
+    let deleteSystemImage: String
     let onCommit: (PracticeSwipeAction) -> Void
     let content: Content
 
@@ -23,6 +26,9 @@ struct PracticeSwipeActionLayer<Content: View>: View {
         skipSystemImage: String = "xmark",
         answerTitle: String = "开始回答",
         answerSystemImage: String = "pencil.and.outline",
+        canDelete: Bool = true,
+        deleteTitle: String = "删除本题",
+        deleteSystemImage: String = "trash",
         onCommit: @escaping (PracticeSwipeAction) -> Void,
         @ViewBuilder content: () -> Content
     ) {
@@ -32,6 +38,9 @@ struct PracticeSwipeActionLayer<Content: View>: View {
         self.skipSystemImage = skipSystemImage
         self.answerTitle = answerTitle
         self.answerSystemImage = answerSystemImage
+        self.canDelete = canDelete
+        self.deleteTitle = deleteTitle
+        self.deleteSystemImage = deleteSystemImage
         self.onCommit = onCommit
         self.content = content()
     }
@@ -52,8 +61,15 @@ struct PracticeSwipeActionLayer<Content: View>: View {
                     .accessibilityHidden(true)
                     .accessibilityIdentifier(PracticeAccessibilityID.skipIndicator)
             }
+            .overlay(alignment: .bottom) {
+                swipeIndicator(title: deleteTitle, systemImage: deleteSystemImage, color: .red)
+                    .padding(24)
+                    .opacity(canDelete ? indicatorOpacity(for: .delete) : 0)
+                    .accessibilityHidden(true)
+                    .accessibilityIdentifier(PracticeAccessibilityID.deleteIndicator)
+            }
             .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .offset(x: dragTranslation.width)
+            .offset(x: dragTranslation.width, y: dragTranslation.height)
             .rotationEffect(.degrees(reduceMotion ? 0 : Double(dragTranslation.width / max(cardWidth, 1)) * 7))
             .simultaneousGesture(dragGesture)
             .allowsHitTesting(!isInteractionDisabled)
@@ -62,6 +78,9 @@ struct PracticeSwipeActionLayer<Content: View>: View {
             }
             .accessibilityAction(named: answerTitle) {
                 commit(.answer)
+            }
+            .accessibilityAction(named: deleteTitle) {
+                commit(.delete)
             }
             .onChange(of: cardWidth) { _, _ in
                 dragTranslation = .zero
@@ -72,7 +91,6 @@ struct PracticeSwipeActionLayer<Content: View>: View {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
                 guard !isInteractionDisabled else { return }
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
 
                 if !didCrossThreshold,
                    PracticeSwipeInteraction.crossedDistanceThreshold(
@@ -85,7 +103,7 @@ struct PracticeSwipeActionLayer<Content: View>: View {
                 }
 
                 previousTranslation = value.translation
-                dragTranslation = CGSize(width: value.translation.width, height: 0)
+                dragTranslation = value.translation
             }
             .onEnded { value in
                 guard !isInteractionDisabled else { return }
@@ -96,26 +114,35 @@ struct PracticeSwipeActionLayer<Content: View>: View {
                 )
                 didCrossThreshold = false
                 previousTranslation = .zero
-                if let action {
+                if let action, action != .delete || canDelete {
                     commit(action)
                 } else {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        dragTranslation = .zero
-                    }
+                    resetDrag()
                 }
             }
     }
 
     private func commit(_ action: PracticeSwipeAction) {
-        guard !isInteractionDisabled else { return }
-        let exitOffset = action == .skip ? -(cardWidth + 160) : cardWidth + 160
+        guard !isInteractionDisabled,
+              action != .delete || canDelete
+        else { return }
+
+        let exitOffset: CGSize
+        switch action {
+        case .skip:
+            exitOffset = CGSize(width: -(cardWidth + 160), height: 0)
+        case .answer:
+            exitOffset = CGSize(width: cardWidth + 160, height: 0)
+        case .delete:
+            exitOffset = CGSize(width: 0, height: -(cardWidth + 160))
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         withAnimation(
             reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.22),
             completionCriteria: .logicallyComplete
         ) {
-            dragTranslation = CGSize(width: exitOffset, height: 0)
+            dragTranslation = exitOffset
         } completion: {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -126,12 +153,31 @@ struct PracticeSwipeActionLayer<Content: View>: View {
         }
     }
 
+    private func resetDrag() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+            dragTranslation = .zero
+        }
+    }
+
     private func indicatorOpacity(for action: PracticeSwipeAction) -> Double {
-        let isMatchingDirection = (action == .skip && dragTranslation.width < 0)
-            || (action == .answer && dragTranslation.width > 0)
+        let isMatchingDirection: Bool
+        switch action {
+        case .skip:
+            isMatchingDirection = dragTranslation.width < 0
+                && abs(dragTranslation.width) >= abs(dragTranslation.height)
+        case .answer:
+            isMatchingDirection = dragTranslation.width > 0
+                && abs(dragTranslation.width) >= abs(dragTranslation.height)
+        case .delete:
+            isMatchingDirection = dragTranslation.height < 0
+                && abs(dragTranslation.height) > abs(dragTranslation.width)
+        }
         guard isMatchingDirection else { return 0 }
         let threshold = cardWidth * PracticeSwipeInteraction.distanceThresholdRatio
-        return Double(min(abs(dragTranslation.width) / max(threshold, 1), 1))
+        let distance = action == .delete
+            ? abs(dragTranslation.height)
+            : abs(dragTranslation.width)
+        return Double(min(distance / max(threshold, 1), 1))
     }
 
     private func swipeIndicator(title: String, systemImage: String, color: Color) -> some View {

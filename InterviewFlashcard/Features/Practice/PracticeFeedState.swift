@@ -9,6 +9,7 @@ enum PracticeFeedEmptyReason: Equatable, Sendable {
 enum PracticeFeedAction: Equatable, Sendable {
     case skipped(questionID: UUID)
     case answered(questionID: UUID)
+    case deleted(questionID: UUID)
 }
 
 struct PracticeFeedState: Equatable, Sendable {
@@ -86,12 +87,21 @@ struct PracticeFeedState: Equatable, Sendable {
     }
 
     @discardableResult
+    mutating func deleteCurrent() -> UUID? {
+        guard let currentQuestionID else { return nil }
+
+        self.currentQuestionID = nil
+        lastAction = .deleted(questionID: currentQuestionID)
+        return currentQuestionID
+    }
+
+    @discardableResult
     mutating func undoLastSwipe() -> UUID? {
         guard let lastAction else { return nil }
 
         let questionID: UUID
         switch lastAction {
-        case let .skipped(id), let .answered(id):
+        case let .skipped(id), let .answered(id), let .deleted(id):
             questionID = id
         }
 
@@ -103,6 +113,12 @@ struct PracticeFeedState: Equatable, Sendable {
     @discardableResult
     mutating func undoLastSkip() -> UUID? {
         guard case .skipped = lastAction else { return nil }
+        return undoLastSwipe()
+    }
+
+    @discardableResult
+    mutating func undoLastDelete() -> UUID? {
+        guard case .deleted = lastAction else { return nil }
         return undoLastSwipe()
     }
 }

@@ -64,7 +64,7 @@ extension AIClient {
     }
 }
 
-enum AIError: Error, Equatable, Sendable {
+enum AIError: Error, Equatable, Sendable, LocalizedError {
     case missingAPIKey
     case unauthorized
     case rateLimited
@@ -75,6 +75,31 @@ enum AIError: Error, Equatable, Sendable {
     case malformedStructuredResponse
     case truncatedResponse
     case processingPaused
+
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey:
+            "未配置 AI API Key。"
+        case .unauthorized:
+            "AI 服务鉴权失败，请检查 API Key。"
+        case .rateLimited:
+            "AI 服务限流，稍后重试。"
+        case let .transientHTTPStatus(status):
+            "AI 服务暂时不可用（HTTP \(status)），请重试评分。"
+        case let .httpStatus(status):
+            "AI 服务请求失败（HTTP \(status)）。"
+        case let .transport(detail):
+            "AI 服务网络连接失败（\(detail)）。"
+        case let .invalidResponse(detail):
+            "AI 返回内容无法解析：\(detail)"
+        case .malformedStructuredResponse:
+            "AI 返回内容不是有效的结构化评分结果。"
+        case .truncatedResponse:
+            "AI 返回内容不完整，请重试评分。"
+        case .processingPaused:
+            "评分处理已暂停。"
+        }
+    }
 
     var isTransient: Bool {
         switch self {

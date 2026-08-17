@@ -43,6 +43,26 @@ final class PracticeSwipeInteractionTests: XCTestCase {
         XCTAssertNil(action)
     }
 
+    func testUpwardDragDeletesCurrentQuestion() {
+        let action = PracticeSwipeInteraction.action(
+            translation: CGSize(width: 8, height: -110),
+            predictedEndTranslation: CGSize(width: 8, height: -120),
+            cardWidth: 300
+        )
+
+        XCTAssertEqual(action, .delete)
+    }
+
+    func testDownwardDragNeverDeletesCurrentQuestion() {
+        let action = PracticeSwipeInteraction.action(
+            translation: CGSize(width: 8, height: 110),
+            predictedEndTranslation: CGSize(width: 8, height: 120),
+            cardWidth: 300
+        )
+
+        XCTAssertNil(action)
+    }
+
     func testFastHorizontalProjectionCommitsBelowDistanceThreshold() {
         let action = PracticeSwipeInteraction.action(
             translation: CGSize(width: 42, height: 5),

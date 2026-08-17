@@ -2,6 +2,29 @@ import Foundation
 import XCTest
 
 final class AIResponseValidatorTests: XCTestCase {
+    func testScoreResponseDefaultsProviderOmittedMetadata() throws {
+        let data = Data(#"""
+        {
+          "dimensions": [
+            {"key":"technicalCorrectness","score":80},
+            {"key":"keyPointCoverage","score":70},
+            {"key":"reasoningDepth","score":60},
+            {"key":"structureClarity","score":80},
+            {"key":"applicationTradeoffs","score":50},
+            {"key":"precisionConciseness","score":70}
+          ]
+        }
+        """#.utf8)
+
+        let response = try JSONDecoder().decode(EvaluationScoreResponse.self, from: data)
+        XCTAssertTrue(response.scorable)
+        XCTAssertEqual(response.confidence, 0.5)
+        XCTAssertEqual(response.scoreRange, ScoreRange(low: 0, high: 100))
+        XCTAssertEqual(response.promptVersion, PromptCatalog.evaluateScoreVersion)
+        XCTAssertEqual(response.rubricVersion, EvaluationRubric.seniorSoftwareEngineer.version)
+        XCTAssertEqual(response.completionStatus, .complete)
+    }
+
     func testEvaluationRejectsMissingDimensionAndComputesNoModelTotal() throws {
         let response = makeEvaluation(
             dimensions: makeDimensions().filter { $0.key != .precision }

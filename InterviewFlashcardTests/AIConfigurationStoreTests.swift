@@ -56,7 +56,7 @@ final class AIConfigurationStoreTests: XCTestCase {
             let store = UserDefaultsAIConfigurationStore(userDefaults: defaults)
 
             XCTAssertEqual(store.load(), .openCodeGo)
-            XCTAssertEqual(store.load().model, "gpt-5.6-luna")
+            XCTAssertEqual(store.load().model, "mimo-v2.5")
             XCTAssertEqual(
                 defaults.integer(forKey: AIConfigurationSettingsKey.migrationVersion),
                 AIConfigurationSettingsKey.currentMigrationVersion

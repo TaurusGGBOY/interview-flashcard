@@ -58,4 +58,29 @@ final class PracticeKeyboardUITests: XCTestCase {
         XCTAssertTrue(app.buttons["practice.answer"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.textViews["answer-editor.text"].exists)
     }
+
+    func testCardCanBeDeletedBySwipingUpAndUndone() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-IFAIProvider", "stub",
+            "-IFSeedFixture", "practice-mixed",
+        ]
+        app.launch()
+
+        let card = app.otherElements["practice.card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        let question = app.staticTexts["practice.question"]
+        XCTAssertTrue(question.waitForExistence(timeout: 5))
+        let originalQuestion = question.label
+
+        card.swipeUp()
+
+        let undo = app.buttons["practice.undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        undo.tap()
+
+        XCTAssertTrue(question.waitForExistence(timeout: 5))
+        XCTAssertEqual(question.label, originalQuestion)
+    }
+
 }

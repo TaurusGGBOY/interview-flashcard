@@ -12,7 +12,7 @@ enum AIOperation: String, Codable, Equatable, Sendable {
 }
 
 enum PromptCatalog {
-    static let decomposeVersion = "decompose-extraction-v5"
+    static let decomposeVersion = "decompose-extraction-v6"
     static let finalAnswerDecomposeVersion = "decompose-final-answer-v3"
     static let referenceAnswerVersion = "reference-answer-v1"
     static let refineVersion = "refine-senior-v3"
@@ -50,6 +50,8 @@ enum PromptCatalog {
                 return common + """
                 \nExtract every distinct interview question from the entire owned Markdown range. This is stage 1 of a two-stage import: identify questions, assign each question to an existing Topic, and collect concise source-backed material only. Do not write a polished or full-score answer, do not summarize the whole document, and do not stop after representative examples. Preserve source order and include later sections. Ignore prose that is not an interview question.
 
+                Every returned question MUST be a complete, standalone question that a reader can understand without seeing the source document. Rewrite fragments into a natural full question when needed. If the source uses pronouns, shorthand, a section title, or omitted context such as “它如何实现？”、“有什么区别？” or “优缺点？”，replace them with the specific subject and scope from the surrounding Markdown (for example, name the technology, component, protocol, or design being discussed). Add only context that is explicitly supported by the supplied Markdown; never guess. Do not leave references such as “上述方案”“这个问题”“它”“该组件” unresolved. Each question must make clear what is being asked and about which subject.
+
                 Never create a candidate from a bare noun, component name, acronym, technology name, heading, list label, or short noun phrase. Examples that MUST be omitted as candidates include “Pod”, “Custom Resources”, “Persistent Volumes”, and “Resource Management”. A candidate must be independently answerable as an interview question: include question punctuation or an explicit interrogative/action such as “什么/如何/为什么/哪些/区别/原理/解释/设计/排查” or “what/how/why/explain/design/troubleshoot”. If a heading names a concept but does not ask anything, omit it even when the following paragraph contains useful material.
 
                 \(topicInstructions(availableTopicNames))
@@ -61,6 +63,8 @@ enum PromptCatalog {
             case .finalAnswer:
                 return common + """
                 \nFreely identify every distinct interview question in the supplied Markdown chunk. This is complete extraction, not summarization: do not cap the number of questions, skip later sections, or stop after finding representative examples. Preserve candidate order. For each candidate, assign an existing Topic and make sourceBackedAnswerMaterial the final concise reference answer, not notes: use Markdown sections “## 结论”, “## 核心要点”, and “## 边界与取舍”, with at least three distinct bullets under “## 核心要点”, at least three sentences, the mechanism, and an evidence-based boundary or tradeoff. Every candidate must include at least one exact source anchor. The owned range decides which chunk owns a candidate; overlapping context is context only. Review the entire owned range before setting completionStatus to complete.
+
+                Every question MUST be complete and independently understandable without the original Markdown. Expand pronouns, shorthand, headings, and context-dependent fragments into a natural full question using the explicit surrounding context. For example, rewrite “它如何实现？” or “有什么区别？” to name the exact technology, component, protocol, or design under discussion. Add only context supported by the supplied Markdown; never guess or leave “上述方案”“这个问题”“它”“该组件”等 unresolved.
 
                 \(topicInstructions(availableTopicNames))
 
@@ -77,7 +81,7 @@ enum PromptCatalog {
             """
         case .refine:
             return common + """
-            \nPolish and deduplicate only within this batch. Preserve one card for every distinct candidate; merge only exact duplicates, never merge related questions that should remain separately answerable. Every output must list all merged candidate IDs. Produce a standalone question, a concise full-score answer grounded only in supplied material, one existing topic name, and source anchors. Creating a new topic is forbidden.
+            \nPolish and deduplicate only within this batch. Preserve one card for every distinct candidate; merge only exact duplicates, never merge related questions that should remain separately answerable. Every output must list all merged candidate IDs. Produce a standalone question, a concise full-score answer grounded only in supplied material, one existing topic name, and source anchors. Creating a new topic is forbidden. The question must be a complete question that a reader understands without the source document: resolve pronouns, shorthand, headings, and omitted subjects with explicit context from the supplied material. Never leave “上述方案”“这个问题”“它”“该组件” unresolved, and never invent context not present in the material.
 
             \(topicInstructions(availableTopicNames))
 

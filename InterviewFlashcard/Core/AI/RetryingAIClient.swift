@@ -10,8 +10,8 @@ struct RetryingAIClient: AIClient {
 
     init(
         base: any AIClient,
-        maximumRetries: Int = 1,
-        retryDelayNanoseconds: UInt64 = 300_000_000,
+        maximumRetries: Int = 3,
+        retryDelayNanoseconds: UInt64 = 500_000_000,
         sleeper: @escaping Sleeper = { try await Task.sleep(nanoseconds: $0) }
     ) {
         self.base = base

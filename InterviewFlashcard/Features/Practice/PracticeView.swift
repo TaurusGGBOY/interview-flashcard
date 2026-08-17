@@ -17,6 +17,7 @@ struct PracticeView: View {
     @Query(sort: \TopicRecord.createdAt) private var topics: [TopicRecord]
     @Query(sort: \QuestionCardRecord.activatedAt) private var cards: [QuestionCardRecord]
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.modelContext) private var modelContext
 
     private let drawService: QuestionDrawService
     private let launchRequest: PracticeLaunchRequest?
@@ -30,6 +31,7 @@ struct PracticeView: View {
     @State private var seededGenerator: SeededPracticeRandomNumberGenerator?
     @State private var didInitializeTopicSelection = false
     @State private var lastHandledLaunchRequestID: UUID?
+    @State private var errorMessage: String?
 
     init(
         drawService: QuestionDrawService = QuestionDrawService(),
@@ -72,9 +74,15 @@ struct PracticeView: View {
         )
     }
 
-    private var canUndo: Bool {
-        guard case .skipped = feedState.lastAction else { return false }
-        return true
+    private var undoTitle: String? {
+        switch feedState.lastAction {
+        case .skipped:
+            "撤销跳过"
+        case .deleted:
+            "撤销删除"
+        case .answered, nil:
+            nil
+        }
     }
 
     var body: some View {
@@ -82,16 +90,22 @@ struct PracticeView: View {
             card: currentCard,
             emptyReason: emptyReason,
             isAnswering: answeringCardID != nil,
-            canUndo: canUndo,
+            undoTitle: undoTitle,
             onSkip: skipCurrent,
+            onDelete: deleteCurrent,
             onStartAnswer: startAnswer,
             onReturnToQuestion: returnToQuestion,
             onViewHistory: viewHistory,
             onAttemptSubmitted: handleAttemptSubmitted,
             onContinueSession: finishAnswer,
-            onUndo: undoLastSkip,
+            onUndo: undoLastAction,
             onOpenLibrary: onOpenLibrary
         )
+        .alert("无法完成操作", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("好", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "未知错误")
+        }
         .sheet(isPresented: historySheetBinding) {
             if let historyQuestionID,
                let question = cards.first(where: { $0.id == historyQuestionID }) {
@@ -113,6 +127,9 @@ struct PracticeView: View {
         .onChange(of: cards.map(\.id)) { _, _ in
             reconcileCurrentCard()
             applyLaunchRequestIfNeeded()
+        }
+        .onChange(of: cards.map { $0.trashedAt }) { _, _ in
+            reconcileCurrentCard()
         }
         .onChange(of: cards.map { $0.attempts.count }) { _, _ in
             reconcileCurrentCard()
@@ -226,11 +243,44 @@ struct PracticeView: View {
         drawNextCard(excluding: lastActionQuestionID)
     }
 
-    private func undoLastSkip() {
-        guard let restoredID = feedState.undoLastSkip(),
-              let restoredCard = snapshots.first(where: { $0.id == restoredID })
+    private func deleteCurrent() {
+        guard let currentCard,
+              answeringCardID == nil,
+              feedState.currentQuestionID == currentCard.id
         else { return }
-        currentCard = restoredCard
+
+        guard feedState.deleteCurrent() != nil else { return }
+        self.currentCard = nil
+        do {
+            try TrashService().moveToTrash(cardID: currentCard.id, context: modelContext)
+            drawNextCard(excluding: lastActionQuestionID)
+        } catch {
+            _ = feedState.undoLastDelete()
+            self.currentCard = currentCard
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func undoLastAction() {
+        switch feedState.lastAction {
+        case .skipped:
+            guard let restoredID = feedState.undoLastSkip(),
+                  let restoredCard = snapshots.first(where: { $0.id == restoredID })
+            else { return }
+            currentCard = restoredCard
+        case let .deleted(questionID):
+            do {
+                try TrashService().restore(cardID: questionID, context: modelContext)
+                guard let restoredID = feedState.undoLastDelete(),
+                      let restoredCard = snapshots.first(where: { $0.id == restoredID })
+                else { return }
+                currentCard = restoredCard
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case .answered, nil:
+            break
+        }
     }
 
     private func handleAttemptSubmitted(_ questionID: UUID) {
@@ -246,7 +296,7 @@ struct PracticeView: View {
 
     private var lastActionQuestionID: UUID? {
         switch feedState.lastAction {
-        case let .skipped(questionID), let .answered(questionID): questionID
+        case let .skipped(questionID), let .answered(questionID), let .deleted(questionID): questionID
         case nil: nil
         }
     }

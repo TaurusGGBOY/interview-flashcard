@@ -11,6 +11,8 @@ final class ConfiguredAIClientTests: XCTestCase {
         XCTAssertTrue(prompt.contains("[\"K8S\", \"Others\"]"))
         XCTAssertTrue(prompt.contains("topicName"))
         XCTAssertTrue(prompt.contains("只能原样复制"))
+        XCTAssertTrue(prompt.contains("Every returned question MUST be a complete, standalone question"))
+        XCTAssertTrue(prompt.contains("Do not leave references such as “上述方案”“这个问题”“它”“该组件” unresolved"))
     }
 
     func testDecomposeAllowsLongRunningProviderResponse() async throws {

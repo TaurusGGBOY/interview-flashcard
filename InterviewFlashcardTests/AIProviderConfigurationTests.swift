@@ -34,9 +34,9 @@ final class AIProviderConfigurationTests: XCTestCase {
         XCTAssertEqual(
             AIProviderConfiguration.openCodeGo,
             AIProviderConfiguration(
-                provider: .openAI,
+                provider: .openAICompatible,
                 baseURL: "https://opencode.ai/zen/go",
-                model: "gpt-5.6-luna"
+                model: "mimo-v2.5"
             )
         )
     }
@@ -63,8 +63,8 @@ final class AIProviderConfigurationTests: XCTestCase {
             "https://api.anthropic.com/v1/messages"
         )
         XCTAssertEqual(
-            try endpoint(.openAI, "https://opencode.ai/zen/go"),
-            "https://opencode.ai/zen/go/v1/responses"
+            try endpoint(.openAICompatible, "https://opencode.ai/zen/go"),
+            "https://opencode.ai/zen/go/v1/chat/completions"
         )
     }
 

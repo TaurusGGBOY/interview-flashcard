@@ -12,6 +12,23 @@
   `DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer`
 - Verified on 2026-08-17: Xcode `27.0` (build `27A5228h`) with iOS `27.0` Simulator runtimes.
 
+## Physical iPhone background testing
+
+- Target device: `wode的iPhone`, UDID `8D55ABDB-E037-50BB-B9D7-6AAE513BE451`.
+- Use `DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer` for every device command.
+- `devicectl` install/launch/capture is reliable from the shell. The physical installer is:
+  `.agents/skills/install-interviewflashcard-iphone/scripts/open-unlock-terminal.sh`.
+- Do not treat plain agent-shell `nohup xcodebuild test` as the physical-test workflow for this project. It was observed to exit during package/test preparation without reaching test execution, and unsigned/background test runners can fail with `0xe8008018` or lose the IDE connection.
+- For a background test job, start `xcodebuild` from a visible Terminal GUI context so `codesign` can access the login keychain, then let the command continue in that Terminal session and poll its log/result bundle from the agent shell. Use this pattern (never put passwords or API keys in the command):
+
+  ```bash
+  osascript -e 'tell application "Terminal" to do script "cd /Volumes/my_disk/project/interview-flashcard && DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer xcodebuild test -project InterviewFlashcard.xcodeproj -scheme InterviewFlashcard -destination '\''platform=iOS,id=8D55ABDB-E037-50BB-B9D7-6AAE513BE451'\'' -derivedDataPath .build/PhysicalTest -resultBundlePath .build/PhysicalTest/result.xcresult DEVELOPMENT_TEAM=6VX3B4X4XR -allowProvisioningUpdates > /tmp/codextmp/physical-ui-test.log 2>&1; echo $? > /tmp/codextmp/physical-ui-test.exit"'
+  ```
+
+- Poll `/tmp/codextmp/physical-ui-test.log` and inspect `.build/PhysicalTest/result.xcresult`. A successful build/install/launch is not a passing UI test; use Device Hub Computer Use for the final visual interaction and result-page verification.
+- The visible installer Terminal must not be closed manually while it is running. The helper now waits for an explicit completion marker written after the installer and all `devicectl` children exit, then closes only its own Terminal window. If macOS shows “closing this window will terminate bash/devicectl,” the command is still running; wait for the helper's `Physical-device installer finished` message.
+- OpenCode Go's `mimo-v2.5` uses `https://opencode.ai/zen/go/v1/chat/completions`; do not configure this model through `/v1/responses`.
+
 ## Vision Analysis Bridge (mandatory rule)
 
 When the current model does NOT support image/vision input (e.g. DeepSeek V4 Flash), and the task requires true visual understanding of a screenshot, screen capture, or image (via computer-use, browser screenshots, or any image file):

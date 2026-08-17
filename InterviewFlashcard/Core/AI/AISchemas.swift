@@ -585,13 +585,15 @@ struct EvaluationScoreResponse: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        scorable = try container.decode(Bool.self, forKey: .scorable)
+        let decodedDimensions = try container.decode([FlexibleEvaluationScoreDimension].self, forKey: .dimensions).map(\.value)
+        scorable = try container.decodeIfPresent(Bool.self, forKey: .scorable) ?? !decodedDimensions.isEmpty
         let reason = try container.decodeIfPresent(String.self, forKey: .notScorableReason)
         notScorableReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true ? nil : reason
-        dimensions = try container.decode([FlexibleEvaluationScoreDimension].self, forKey: .dimensions).map(\.value)
-        let decodedConfidence = try container.decode(Double.self, forKey: .confidence)
+        dimensions = decodedDimensions
+        let decodedConfidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0.5
         confidence = decodedConfidence > 1 && decodedConfidence <= 100 ? decodedConfidence / 100 : decodedConfidence
-        scoreRange = try container.decode(ScoreRange.self, forKey: .scoreRange)
+        scoreRange = try container.decodeIfPresent(ScoreRange.self, forKey: .scoreRange)
+            ?? ScoreRange(low: 0, high: 100)
         if let decodedWarnings = try? container.decodeIfPresent([String].self, forKey: .warnings) {
             warnings = decodedWarnings
         } else if let warning = try? container.decodeIfPresent(String.self, forKey: .warnings) {
@@ -599,10 +601,12 @@ struct EvaluationScoreResponse: Codable, Equatable, Sendable {
         } else {
             warnings = []
         }
-        modelID = try container.decode(String.self, forKey: .modelID)
-        promptVersion = try container.decode(String.self, forKey: .promptVersion)
-        rubricVersion = try container.decode(String.self, forKey: .rubricVersion)
-        completionStatus = try container.decode(AICompletionStatus.self, forKey: .completionStatus)
+        modelID = try container.decodeIfPresent(String.self, forKey: .modelID) ?? "unknown"
+        promptVersion = try container.decodeIfPresent(String.self, forKey: .promptVersion)
+            ?? PromptCatalog.evaluateScoreVersion
+        rubricVersion = try container.decodeIfPresent(String.self, forKey: .rubricVersion)
+            ?? EvaluationRubric.seniorSoftwareEngineer.version
+        completionStatus = try container.decodeIfPresent(AICompletionStatus.self, forKey: .completionStatus) ?? .complete
     }
 }
 

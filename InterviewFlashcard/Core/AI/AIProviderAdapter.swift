@@ -86,17 +86,42 @@ private struct OpenAIResponsesAdapter: AIProviderAdapter {
             || envelope.status == "incomplete" {
             throw AIError.truncatedResponse
         }
-        let text = envelope.output
+        let responseOutput = envelope.output?
             .flatMap(\.content)
-            .filter { $0.type == "output_text" }
-            .compactMap(\.text)
+            .filter { $0.type == "output_text" || $0.type == "text" }
+            .compactMap { $0.text ?? $0.value }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+            .joined(separator: "\n") ?? ""
+        let chatOutput = envelope.choices?
+            .compactMap { $0.message.content }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n") ?? ""
+        let text = [envelope.outputText ?? "", responseOutput, chatOutput]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
         guard !text.isEmpty else {
-            throw AIError.invalidResponse("Responses API returned no output text")
+            throw AIError.invalidResponse(
+                "Responses API returned no output text（结构：\(Self.responseShape(data))）"
+            )
         }
         return text
+    }
+
+    private static func responseShape(_ data: Data) -> String {
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
+            return "非 JSON"
+        }
+        guard let dictionary = object as? [String: Any] else {
+            return String(describing: type(of: object))
+        }
+        let keys = dictionary.keys.sorted().joined(separator: ",")
+        let arrayCounts = dictionary.keys.sorted().compactMap { key -> String? in
+            guard let values = dictionary[key] as? [Any] else { return nil }
+            return "\(key).count=\(values.count)"
+        }
+        return "keys=\(keys); \(arrayCounts.joined(separator: ","))"
     }
 }
 
@@ -304,12 +329,15 @@ private struct OpenAIResponsesRequest: Encodable {
 }
 
 private struct OpenAIResponsesEnvelope: Decodable {
-    let output: [Output]
+    let output: [Output]?
+    let outputText: String?
+    let choices: [Choice]?
     let status: String?
     let incompleteDetails: IncompleteDetails?
 
     enum CodingKeys: String, CodingKey {
-        case output, status
+        case output, choices, status
+        case outputText = "output_text"
         case incompleteDetails = "incomplete_details"
     }
 
@@ -320,6 +348,15 @@ private struct OpenAIResponsesEnvelope: Decodable {
     struct Content: Decodable {
         let type: String
         let text: String?
+        let value: String?
+    }
+
+    struct Choice: Decodable {
+        let message: Message
+    }
+
+    struct Message: Decodable {
+        let content: String?
     }
 
     struct IncompleteDetails: Decodable {

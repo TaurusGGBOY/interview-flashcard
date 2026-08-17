@@ -26,9 +26,8 @@ enum AIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openAICompatible:
             AIProviderConfiguration(
                 provider: self,
-                // The subscription endpoint is OpenCode Go. Note that OpenCode
-                // Go speaks the Responses API (/v1/responses), not Chat
-                // Completions; prefer .openCodeGo below for that service.
+                // OpenCode Go's MiMo/Go models use the OpenAI-compatible Chat
+                // Completions endpoint.
                 baseURL: "https://opencode.ai/zen/go",
                 model: "deepseek-v4-flash"
             )
@@ -44,7 +43,7 @@ enum AIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
     fileprivate var endpointPathComponents: [String] {
         switch self {
         case .openAI: ["v1", "responses"]
-        case .openAICompatible: ["chat", "completions"]
+        case .openAICompatible: ["v1", "chat", "completions"]
         case .anthropic: ["v1", "messages"]
         }
     }
@@ -71,13 +70,12 @@ struct AIProviderConfiguration: Codable, Equatable, Sendable {
 }
 
 extension AIProviderConfiguration {
-    /// OpenCode Go's public subscription endpoint speaks the OpenAI Responses
-    /// API. This is the default provider for new installs and the migration
-    /// target for legacy DeepSeek settings.
+    /// OpenCode Go's MiMo V2.5 endpoint speaks OpenAI-compatible Chat
+    /// Completions. This is the default provider for new installs.
     static let openCodeGo = AIProviderConfiguration(
-        provider: .openAI,
+        provider: .openAICompatible,
         baseURL: "https://opencode.ai/zen/go",
-        model: "gpt-5.6-luna"
+        model: "mimo-v2.5"
     )
 }
 
