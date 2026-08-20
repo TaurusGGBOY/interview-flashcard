@@ -26,6 +26,7 @@
 - Modify `InterviewFlashcard/Core/Persistence/Models/QuestionRecord.swift`: expose the derived, non-persisted answered-state property beside the existing model state helpers.
 - Create `InterviewFlashcardTests/QuestionAnsweredStateTests.swift`: verify unanswered, answered, and failed-processing-attempt semantics using the in-memory SwiftData test container.
 - Modify `InterviewFlashcard/Features/Library/LibraryView.swift`: render and announce the answered state consistently in both question-row variants.
+- Create `InterviewFlashcardUITests/LibraryAnsweredIndicatorUITests.swift`: exercise Topic expansion, search, selection-mode hiding, accessibility labels, and screenshot capture in the real simulator UI.
 
 ### Task 1: Derived Answered State
 
@@ -114,7 +115,7 @@ git commit -m "feat: mark answered questions in library"
 ### Task 3: Regression and Interface Verification
 
 **Files:**
-- Verify only; no planned source changes
+- Create: `InterviewFlashcardUITests/LibraryAnsweredIndicatorUITests.swift`
 
 **Interfaces:**
 - Consumes: completed model and library presentation from Tasks 1–2
@@ -125,14 +126,25 @@ git commit -m "feat: mark answered questions in library"
 Run:
 
 ```bash
-DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer scripts/dev/test.sh -only-testing:InterviewFlashcardTests
+source .local/acceptance.env
+xcodegen generate
+DEVELOPER_DIR=/Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer \
+  /Users/gaoguobin/Downloads/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild \
+  -project InterviewFlashcard.xcodeproj \
+  -scheme InterviewFlashcard \
+  -configuration Debug \
+  -destination "platform=iOS Simulator,id=$IF_SIMULATOR_UDID" \
+  -derivedDataPath .build/DerivedData \
+  test -only-testing:InterviewFlashcardTests
 ```
 
 Expected: the complete `InterviewFlashcardTests` target passes. If unrelated pre-existing worktree changes cause a failure, record the exact failing suite and verify that the focused suites from Task 2 still pass; do not modify or discard the user's unrelated changes.
 
-- [ ] **Step 2: Launch and inspect the library UI**
+- [ ] **Step 2: Add and run the library UI acceptance test**
 
-Use the project development launcher with the configured iOS simulator, then verify: an answered Topic-expanded row has a green trailing checkmark; an unanswered row has no marker; search results match; entering batch selection hides the answered marker; exiting restores it; light and dark appearances remain legible.
+Create one XCUITest that launches the `practice-mixed` fixture, opens the library by its tab label, expands the deterministic backend Topic, and asserts that the answered fixture row's accessibility label includes “已回答” while the unanswered row omits it. Pull down to expose search, search for the answered fixture, repeat the label assertion, long-press that result, and assert the selection-mode label omits “已回答”. Keep screenshots for the expanded, search, and selection states.
+
+Run the test on a clean simulator in both light and dark appearances. Expected: the test passes in both appearances; screenshots show a green trailing checkmark only in normal browsing, while selection mode shows only its blue selection indicator.
 
 - [ ] **Step 3: Verify accessibility semantics**
 
