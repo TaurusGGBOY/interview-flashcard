@@ -358,6 +358,9 @@ struct LibraryView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                answeredIndicator(for: question)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
@@ -373,7 +376,11 @@ struct LibraryView: View {
                 ? LibraryAccessibilityID.questionSelection(question)
                 : LibraryAccessibilityID.questionRow(question)
         )
-        .accessibilityLabel(isSelectingQuestions ? questionSelectionLabel(for: question) : question.questionText)
+        .accessibilityLabel(
+            isSelectingQuestions
+                ? questionSelectionLabel(for: question)
+                : questionBrowsingLabel(for: question)
+        )
         .highPriorityGesture(
             LongPressGesture(minimumDuration: 0.5)
                 .onEnded { _ in beginQuestionSelection(with: question) }
@@ -415,6 +422,8 @@ struct LibraryView: View {
                                 .truncationMode(.tail)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
+
+                        answeredIndicator(for: question)
                     }
                     .padding(12)
                     .background(.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -429,7 +438,11 @@ struct LibraryView: View {
                         ? LibraryAccessibilityID.questionSelection(question)
                         : LibraryAccessibilityID.questionRow(question)
                 )
-                .accessibilityLabel(isSelectingQuestions ? questionSelectionLabel(for: question) : question.questionText)
+                .accessibilityLabel(
+                    isSelectingQuestions
+                        ? questionSelectionLabel(for: question)
+                        : questionBrowsingLabel(for: question)
+                )
                 .highPriorityGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in beginQuestionSelection(with: question) }
@@ -445,6 +458,21 @@ struct LibraryView: View {
                 .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    @ViewBuilder
+    private func answeredIndicator(for question: QuestionCardRecord) -> some View {
+        if question.hasBeenAnswered && !isSelectingQuestions {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .imageScale(.medium)
+                .fixedSize()
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func questionBrowsingLabel(for question: QuestionCardRecord) -> String {
+        question.hasBeenAnswered ? "\(question.questionText)，已回答" : question.questionText
     }
 
     private func displayName(for topic: TopicRecord) -> String {
