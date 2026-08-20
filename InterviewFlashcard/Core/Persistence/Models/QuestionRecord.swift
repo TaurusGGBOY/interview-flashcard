@@ -21,6 +21,7 @@ final class QuestionCardRecord {
     var attempts: [AnswerAttemptRecord] = []
 
     var isTrashed: Bool { trashedAt != nil }
+    var hasBeenAnswered: Bool { !attempts.isEmpty }
 
     init(
         id: UUID = UUID(),
