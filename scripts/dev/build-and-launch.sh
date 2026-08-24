@@ -127,7 +127,7 @@ source "$ACCEPTANCE_ENV_PATH"
 : "${IF_BUNDLE_ID:?missing IF_BUNDLE_ID}"
 
 if [[ "$requested_ai_provider" == "cc-switch" ]]; then
-  cc_switch_db_path="${CC_SWITCH_DB_PATH:-/Users/gaoguobin/.cc-switch/cc-switch.db}"
+  cc_switch_db_path="${CC_SWITCH_DB_PATH:-${HOME}/.cc-switch/cc-switch.db}"
   [[ -r "$cc_switch_db_path" ]] || blocked "cc-switch database is not readable: $cc_switch_db_path"
 
   cc_switch_values="$(python3 - "$cc_switch_db_path" <<'PY'
@@ -142,7 +142,7 @@ row = connection.execute(
     """
         SELECT settings_config, meta
     FROM providers
-    WHERE app_type = 'claude' AND is_current = 1
+    WHERE app_type = "claude" AND is_current = 1
     LIMIT 1
     """
 ).fetchone()
@@ -173,7 +173,7 @@ if not base_url or not api_key or not model:
     raise SystemExit("current cc-switch provider lacks base URL, key, or model")
 
 # cc-switch stores the provider root for the active provider.
-# OpenAI adapters use the provider's /v1 prefix before their endpoint path.
+# OpenAI adapters use the provider /v1 prefix before their endpoint path.
 if provider == "anthropic" and base_url.lower().startswith(("http://127.0.0.1", "http://localhost", "https://127.0.0.1", "https://localhost")):
     proxy_config_path = os.environ.get(
         "CC_SWITCH_PROXY_CONFIG_PATH",
