@@ -2,6 +2,31 @@ import XCTest
 
 @MainActor
 final class JSONImportUITests: XCTestCase {
+    func testJSONTemplateIsDiscoverableFromImportScreen() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-IFAIProvider", "stub",
+            "-IFSeedFixture", "practice-mixed",
+        ]
+        app.launch()
+
+        let libraryTab = app.tabBars.buttons["题库"]
+        XCTAssertTrue(libraryTab.waitForExistence(timeout: 5))
+        libraryTab.tap()
+
+        let openImport = app.buttons["library.import-markdown"]
+        XCTAssertTrue(openImport.waitForExistence(timeout: 5))
+        openImport.tap()
+
+        let templateButton = app.buttons["import.json.template-button"]
+        XCTAssertTrue(templateButton.waitForExistence(timeout: 5))
+        templateButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["import.json.template"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["import.json.template.code"].exists)
+        XCTAssertTrue(app.buttons["import.json.template.copy"].exists)
+    }
+
     func testJSONInboxLaunchOptionImportsWithoutUIInteraction() {
         let app = XCUIApplication()
         app.launchArguments = [

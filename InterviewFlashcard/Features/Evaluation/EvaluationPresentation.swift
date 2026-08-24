@@ -37,6 +37,18 @@ struct EvaluationPresentation: Equatable, Sendable {
     let referenceAnswer: String
     let referenceVersion: Int
 
+    /// A compact, user-facing summary of everything that needs improvement.
+    /// The raw payload keeps its richer categories for auditing, but the result
+    /// screen presents one concise negative-feedback section.
+    var weaknesses: [String] {
+        var seen: Set<String> = []
+        return (gaps + factualErrors + improvements).filter { item in
+            let text = item.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return false }
+            return seen.insert(text).inserted
+        }
+    }
+
     init(evaluation: EvaluationRecord) {
         let payload = Self.decodePayload(evaluation.feedbackJSON)
         let feedback = Self.decodeDictionary(evaluation.feedbackJSON)

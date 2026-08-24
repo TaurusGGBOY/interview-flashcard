@@ -10,6 +10,10 @@ final class AppShellTests: XCTestCase {
         let identifiers = [
             ImportAccessibilityID.importButton,
             ImportAccessibilityID.jsonImportButton,
+            ImportAccessibilityID.jsonTemplateButton,
+            ImportAccessibilityID.jsonTemplateScreen,
+            ImportAccessibilityID.jsonTemplateCode,
+            ImportAccessibilityID.jsonTemplateCopyButton,
             ImportAccessibilityID.jsonInboxImportButton,
             ImportAccessibilityID.jsonWorkingIndicator,
             ImportAccessibilityID.jsonPreviewScreen,
@@ -19,6 +23,7 @@ final class AppShellTests: XCTestCase {
 
         XCTAssertEqual(ImportAccessibilityID.importButton, "import.markdown.button")
         XCTAssertEqual(ImportAccessibilityID.jsonImportButton, "import.json.button")
+        XCTAssertEqual(ImportAccessibilityID.jsonTemplateButton, "import.json.template-button")
         XCTAssertEqual(Set(identifiers).count, identifiers.count)
     }
 

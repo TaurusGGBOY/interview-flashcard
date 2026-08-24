@@ -55,6 +55,11 @@ final class PracticeKeyboardUITests: XCTestCase {
 
         let score = app.staticTexts["answer-editor.result.score"]
         XCTAssertTrue(score.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["六维具体详情"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["做得好的地方"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["做得不好的地方"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["原回答证据"].exists)
+        XCTAssertFalse(app.staticTexts["本题缺口"].exists)
     }
 
     func testReturningFromAnswerThenSkippingAdvancesCard() {

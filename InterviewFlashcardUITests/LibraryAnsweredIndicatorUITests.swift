@@ -19,7 +19,8 @@ final class LibraryAnsweredIndicatorUITests: XCTestCase {
         ]
         XCTAssertTrue(backendTopic.waitForExistence(timeout: 5))
         backendTopic.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)
+            // Tap the blank middle area between the topic name and chevron.
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).tap()
 
         let answeredQuestion = app.buttons.matching(

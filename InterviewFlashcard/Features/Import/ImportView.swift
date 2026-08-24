@@ -13,6 +13,7 @@ struct ImportView: View {
 
     @State private var isShowingMarkdownFileImporter = false
     @State private var isShowingJSONFileImporter = false
+    @State private var isShowingJSONTemplate = false
     @State private var isWorking = false
     @State private var isReadingJSON = false
     @State private var selectedReviewRunID: UUID?
@@ -48,6 +49,15 @@ struct ImportView: View {
                 }
                 .disabled(isWorking)
                 .accessibilityIdentifier(ImportAccessibilityID.jsonImportButton)
+
+                Button {
+                    isShowingJSONTemplate = true
+                } label: {
+                    Label("查看 JSON 格式示例", systemImage: "doc.text.magnifyingglass")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityIdentifier(ImportAccessibilityID.jsonTemplateButton)
 
                 Button(action: readJSONInbox) {
                     Label("导入收件箱 JSON", systemImage: "tray.full")
@@ -176,6 +186,11 @@ struct ImportView: View {
                 }
             } else {
                 ContentUnavailableView("JSON 内容不存在", systemImage: "doc.questionmark")
+            }
+        }
+        .sheet(isPresented: $isShowingJSONTemplate) {
+            NavigationStack {
+                JSONTemplateView()
             }
         }
         .sheet(isPresented: jsonValidationSheetBinding) {
@@ -646,6 +661,10 @@ enum ImportAccessibilityID {
     static let importButton = "import.markdown.button"
     static let workingIndicator = "import.working"
     static let jsonImportButton = "import.json.button"
+    static let jsonTemplateButton = "import.json.template-button"
+    static let jsonTemplateScreen = "import.json.template"
+    static let jsonTemplateCode = "import.json.template.code"
+    static let jsonTemplateCopyButton = "import.json.template.copy"
     static let jsonInboxImportButton = "import.json.inbox-button"
     static let jsonWorkingIndicator = "import.json.working"
     static let jsonPreviewScreen = "import.json.preview"

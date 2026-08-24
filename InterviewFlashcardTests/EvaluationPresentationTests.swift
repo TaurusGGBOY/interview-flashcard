@@ -121,6 +121,7 @@ final class EvaluationPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.dimensions.first?.missedPoints, ["缺少一个关键边界"])
         XCTAssertEqual(presentation.gaps, ["缺少失败场景"])
         XCTAssertEqual(presentation.warnings, ["语音转写噪声"])
+        XCTAssertEqual(presentation.weaknesses, ["缺少失败场景", "补充超时处理"])
         XCTAssertEqual(presentation.scoreRange, .init(low: 70, high: 85))
     }
 

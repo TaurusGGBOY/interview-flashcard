@@ -182,37 +182,6 @@ struct EvaluationResultView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
-                    if !row.evidence.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("原回答证据", systemImage: "text.quote")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            ForEach(Array(row.evidence.enumerated()), id: \.offset) { _, evidence in
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("“\(evidence.quote)”")
-                                        .font(.footnote)
-                                        .textSelection(.enabled)
-                                    Text(evidence.explanation)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.leading, 8)
-                            }
-                        }
-                    }
-
-                    if !row.missedPoints.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("本题遗漏", systemImage: "exclamationmark.circle")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
-                            ForEach(Array(row.missedPoints.enumerated()), id: \.offset) { _, point in
-                                Label(point, systemImage: "minus.circle")
-                                    .font(.caption)
-                                    .labelStyle(FeedbackLabelStyle())
-                            }
-                        }
-                    }
                 }
                 if index < presentation.dimensions.count - 1 { Divider() }
             }
@@ -227,17 +196,8 @@ struct EvaluationResultView: View {
         if !presentation.strengths.isEmpty {
             feedbackList(title: "做得好的地方", icon: "checkmark.circle.fill", color: .green, items: presentation.strengths)
         }
-        if !presentation.gaps.isEmpty {
-            feedbackList(title: "本题缺口", icon: "minus.circle.fill", color: .orange, items: presentation.gaps)
-        }
-        if !presentation.factualErrors.isEmpty {
-            feedbackList(title: "事实错误", icon: "exclamationmark.triangle.fill", color: .red, items: presentation.factualErrors)
-        }
-        if !presentation.improvements.isEmpty {
-            feedbackList(title: "下一次改进", icon: "arrow.up.right.circle.fill", color: .orange, items: presentation.improvements)
-        }
-        if !presentation.warnings.isEmpty {
-            feedbackList(title: "评分提示", icon: "info.circle.fill", color: .secondary, items: presentation.warnings)
+        if !presentation.weaknesses.isEmpty {
+            feedbackList(title: "做得不好的地方", icon: "exclamationmark.circle.fill", color: .orange, items: presentation.weaknesses)
         }
     }
 
@@ -260,39 +220,49 @@ struct EvaluationResultView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("回答对照")
                 .font(.headline)
-            answerBlock(title: "原始回答", text: presentation.rawText)
+            answerBlock(title: "原始回答", text: presentation.rawText, tint: .blue)
             if let polishedText = presentation.polishedText {
-                answerBlock(title: "历史润色版本", text: polishedText)
+                answerBlock(title: "历史润色版本", text: polishedText, tint: .purple)
             }
             VStack(alignment: .leading, spacing: 6) {
                 if presentation.referenceAnswer.isEmpty {
                     Label("满分答案生成中…", systemImage: "hourglass")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.green)
                 } else {
                     Text("满分答案（v\(presentation.referenceVersion)）")
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.green)
                     Text(presentation.referenceAnswer)
                         .textSelection(.enabled)
                         .accessibilityIdentifier("answer-editor.result.reference-answer")
                 }
             }
             .padding(12)
-            .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.green.opacity(0.28), lineWidth: 1)
+            }
         }
         .padding(16)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    private func answerBlock(title: String, text: String) -> some View {
+    private func answerBlock(title: String, text: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
             Text(text)
                 .textSelection(.enabled)
         }
         .padding(12)
-        .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(tint.opacity(0.28), lineWidth: 1)
+        }
     }
 
     private func scoreColor(_ score: Int) -> Color {

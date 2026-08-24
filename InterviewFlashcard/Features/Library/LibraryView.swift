@@ -293,8 +293,11 @@ struct LibraryView: View {
                             .foregroundStyle(.secondary)
                             .imageScale(.small)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier(LibraryAccessibilityID.topicRow(topic))
                 .accessibilityAddTraits(.isButton)
 
