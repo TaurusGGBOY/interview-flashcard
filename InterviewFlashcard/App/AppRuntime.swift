@@ -14,6 +14,7 @@ public final class AppRuntime {
 
     private var importCoordinator: ImportCoordinator?
     private var answerProcessing: AnswerProcessingService?
+    private var answerProcessingScheduler: AnswerProcessingScheduler?
     private var didPrepareServices = false
     private var didStartRecovery = false
     private var didStartAcceptanceImport = false
@@ -145,8 +146,14 @@ public final class AppRuntime {
             now: environment.dependencies.now,
             diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
         )
+        let scheduler = AnswerProcessingScheduler(
+            processing: processing,
+            context: context
+        )
         importCoordinator = importer
         answerProcessing = processing
+        answerProcessingScheduler = scheduler
+        environment.installAnswerProcessingScheduler(scheduler)
         environment.importCoordinator = importer
         didPrepareServices = true
     }

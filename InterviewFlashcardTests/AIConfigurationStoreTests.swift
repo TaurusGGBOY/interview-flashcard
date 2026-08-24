@@ -27,7 +27,7 @@ final class AIConfigurationStoreTests: XCTestCase {
             XCTAssertEqual(
                 store.load(),
                 AIProviderConfiguration(
-                    provider: .openAI,
+                    provider: .openAICompatible,
                     baseURL: "https://opencode.ai/zen/go",
                     model: "legacy-deepseek-model"
                 )

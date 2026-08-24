@@ -11,6 +11,7 @@ enum AnswerEditorAccessibilityID {
     static let result = "answer-editor.result"
     static let resultScore = "answer-editor.result.score"
     static let continueSession = "answer-editor.continue"
+    static let nextWhileProcessing = "answer-editor.next-while-processing"
 }
 
 @MainActor
@@ -24,6 +25,8 @@ struct AnswerEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppEnvironment.self) private var environment
     @Query private var cards: [QuestionCardRecord]
+    @Query(sort: \AnswerAttemptRecord.submittedAt, order: .reverse) private var attempts: [AnswerAttemptRecord]
+    @Query(sort: \EvaluationRecord.createdAt, order: .reverse) private var evaluations: [EvaluationRecord]
 
     private let questionID: UUID
     private let presentation: Presentation
@@ -36,6 +39,14 @@ struct AnswerEditorView: View {
     @State private var submittedAttemptID: UUID?
     @State private var processingResult: EvaluationRecord?
     @State private var isShowingResult = false
+
+    private struct AttemptProgress: Equatable {
+        let attemptID: UUID
+        let processingStatusRaw: String
+        let evaluationID: UUID?
+        let evaluationStatusRaw: String?
+        let failureSummary: String?
+    }
 
     init(
         questionID: UUID,
@@ -85,6 +96,9 @@ struct AnswerEditorView: View {
             }
         }
         .accessibilityIdentifier(AnswerEditorAccessibilityID.screen)
+        .onChange(of: submittedAttemptProgress, initial: true) { _, _ in
+            revealCompletedEvaluationIfNeeded()
+        }
         .sheet(isPresented: $isShowingResult) {
             if let processingResult {
                 NavigationStack {
@@ -117,6 +131,7 @@ struct AnswerEditorView: View {
 
             processingStatus
             failureStatus
+            pendingNavigation
         }
         .safeAreaPadding(.horizontal, 20)
         .safeAreaPadding(.vertical, 16)
@@ -150,13 +165,32 @@ struct AnswerEditorView: View {
         if isProcessing {
             HStack(spacing: 10) {
                 ProgressView()
-                Text("正在评分…")
-                    .font(.subheadline.weight(.medium))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("正在后台评分…")
+                        .font(.subheadline.weight(.medium))
+                    Text("可以继续下一题，稍后也可在历史中查看结果。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
             .padding(16)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .accessibilityIdentifier(AnswerEditorAccessibilityID.processing)
+        }
+    }
+
+    @ViewBuilder
+    private var pendingNavigation: some View {
+        if submittedAttemptID != nil, !isShowingResult {
+            Button(
+                presentation == .cardBack ? "下一题" : "关闭",
+                systemImage: presentation == .cardBack ? "arrow.right" : "xmark",
+                action: continueAfterSubmit
+            )
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier(AnswerEditorAccessibilityID.nextWhileProcessing)
         }
     }
 
@@ -216,7 +250,68 @@ struct AnswerEditorView: View {
         onAttemptSubmitted(
             Self.submittedQuestionID(questionID: questionID, attemptID: attempt.id)
         )
-        process(attemptID: attempt.id)
+        if !environment.scheduleAnswerProcessing(attemptID: attempt.id) {
+            // Test hosts and previews may not install AppRuntime's scheduler.
+            // Keep those contexts functional with the original local fallback.
+            process(attemptID: attempt.id)
+        }
+    }
+
+    private var submittedAttemptProgress: AttemptProgress? {
+        guard let submittedAttemptID,
+              let attempt = attempts.first(where: { $0.id == submittedAttemptID })
+        else {
+            return nil
+        }
+        let evaluation = latestEvaluation(for: attempt.id)
+        return AttemptProgress(
+            attemptID: attempt.id,
+            processingStatusRaw: attempt.processingStatusRaw,
+            evaluationID: evaluation?.id,
+            evaluationStatusRaw: evaluation?.statusRaw,
+            failureSummary: attempt.failureSummary
+        )
+    }
+
+    private func revealCompletedEvaluationIfNeeded() {
+        guard let submittedAttemptID,
+              let attempt = attempts.first(where: { $0.id == submittedAttemptID })
+        else {
+            return
+        }
+
+        if attempt.processingStatus == .failed {
+            isProcessing = false
+            if errorMessage == nil {
+                errorMessage = attempt.failureSummary ?? "评分失败，请重试。"
+            }
+            return
+        }
+
+        guard let evaluation = latestEvaluation(for: attempt.id),
+              evaluation.status == .feedback || evaluation.status == .completed
+        else {
+            return
+        }
+
+        isProcessing = false
+        guard processingResult?.id != evaluation.id else { return }
+        processingResult = evaluation
+        isShowingResult = true
+    }
+
+    private func latestEvaluation(for attemptID: UUID) -> EvaluationRecord? {
+        evaluations.first(where: { $0.attempt.id == attemptID })
+    }
+
+    private func continueAfterSubmit() {
+        isShowingResult = false
+        processingResult = nil
+        if presentation == .cardBack {
+            onContinueSession()
+        } else {
+            dismiss()
+        }
     }
 
     private func process(attemptID: UUID, forceRescore: Bool = false) {

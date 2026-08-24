@@ -32,6 +32,31 @@ final class PracticeKeyboardUITests: XCTestCase {
         )
     }
 
+    func testSubmittedAnswerShowsScoreWhileAnswerPageRemainsOpen() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-IFAIProvider", "stub",
+            "-IFSeedFixture", "practice-mixed",
+        ]
+        app.launch()
+
+        let startAnswer = app.buttons["practice.answer"]
+        XCTAssertTrue(startAnswer.waitForExistence(timeout: 5))
+        startAnswer.tap()
+
+        let editor = app.textViews["answer-editor.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("先给出核心机制，再说明边界条件和取舍。")
+
+        let keyboardSubmit = app.buttons["answer-editor.submit.keyboard"]
+        XCTAssertTrue(keyboardSubmit.waitForExistence(timeout: 5))
+        keyboardSubmit.tap()
+
+        let score = app.staticTexts["answer-editor.result.score"]
+        XCTAssertTrue(score.waitForExistence(timeout: 5))
+    }
+
     func testReturningFromAnswerThenSkippingAdvancesCard() {
         let app = XCUIApplication()
         app.launchArguments = [

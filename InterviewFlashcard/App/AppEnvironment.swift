@@ -126,6 +126,7 @@ public final class AppEnvironment {
     public let launchOptions: LaunchOptions
     let dependencies: Dependencies
     @ObservationIgnored var importCoordinator: ImportCoordinator?
+    @ObservationIgnored private var answerProcessingScheduler: AnswerProcessingScheduler?
     private(set) var apiKeyConfigured = false
     private(set) var aiConfiguration: AIProviderConfiguration
     private(set) var practiceSettings: PracticeSettingsSnapshot
@@ -142,6 +143,17 @@ public final class AppEnvironment {
 
     public convenience init() {
         self.init(launchOptions: .current(), dependencies: .live)
+    }
+
+    func installAnswerProcessingScheduler(_ scheduler: AnswerProcessingScheduler) {
+        answerProcessingScheduler = scheduler
+    }
+
+    @discardableResult
+    func scheduleAnswerProcessing(attemptID: UUID) -> Bool {
+        guard let answerProcessingScheduler else { return false }
+        answerProcessingScheduler.schedule(attemptID: attemptID)
+        return true
     }
 
     var configuredModel: String {
