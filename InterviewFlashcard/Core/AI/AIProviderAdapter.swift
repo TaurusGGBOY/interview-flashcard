@@ -5,6 +5,18 @@ enum AIProviderResponseMode: Equatable, Sendable {
     case plainText
 }
 
+enum AIResponseSchema: CaseIterable, Equatable, Sendable {
+    case generic
+    case decompose
+    case referenceAnswer
+    case refine
+    case reclassify
+    case polish
+    case evaluateScore
+    case evaluate
+    case evaluationFeedback
+}
+
 enum AIThinkingMode: String, Equatable, Sendable {
     case enabled
     case disabled
@@ -17,6 +29,7 @@ protocol AIProviderAdapter: Sendable {
         systemPrompt: String,
         userMessage: String,
         mode: AIProviderResponseMode,
+        responseSchema: AIResponseSchema,
         timeout: TimeInterval,
         maxOutputTokens: Int?,
         thinking: AIThinkingMode?
@@ -42,6 +55,7 @@ private struct OpenAIResponsesAdapter: AIProviderAdapter {
         systemPrompt: String,
         userMessage: String,
         mode: AIProviderResponseMode,
+        responseSchema: AIResponseSchema,
         timeout: TimeInterval,
         maxOutputTokens: Int?,
         thinking: AIThinkingMode?
@@ -61,7 +75,7 @@ private struct OpenAIResponsesAdapter: AIProviderAdapter {
                 ),
             ],
             text: mode == .structuredJSON
-                ? .init(format: .jsonSchema)
+                ? .init(format: .jsonSchema(for: responseSchema))
                 : nil,
             maxOutputTokens: maxOutputTokens,
             reasoning: thinking == .disabled ? .init(effort: "none") : nil
@@ -132,6 +146,7 @@ private struct OpenAICompatibleChatAdapter: AIProviderAdapter {
         systemPrompt: String,
         userMessage: String,
         mode: AIProviderResponseMode,
+        responseSchema: AIResponseSchema,
         timeout: TimeInterval,
         maxOutputTokens: Int?,
         thinking: AIThinkingMode?
@@ -144,7 +159,9 @@ private struct OpenAICompatibleChatAdapter: AIProviderAdapter {
                 .init(role: "system", content: systemPrompt),
                 .init(role: "user", content: userMessage),
             ],
-            responseFormat: mode == .structuredJSON ? .jsonSchema : nil,
+            responseFormat: mode == .structuredJSON
+                ? .jsonSchema(for: responseSchema)
+                : nil,
             temperature: 0,
             maxTokens: maxOutputTokens,
             thinking: thinking.map { .init(type: $0.rawValue) }
@@ -186,6 +203,7 @@ private struct AnthropicMessagesAdapter: AIProviderAdapter {
         systemPrompt: String,
         userMessage: String,
         mode: AIProviderResponseMode,
+        responseSchema: AIResponseSchema,
         timeout: TimeInterval,
         maxOutputTokens: Int?,
         thinking: AIThinkingMode?
@@ -310,19 +328,19 @@ private struct OpenAIResponsesRequest: Encodable {
         let strict: Bool?
         let schema: StructuredJSONSchema?
 
-        static let jsonSchema = Format(
-            type: "json_schema",
-            name: "interview_flashcard_response",
-            strict: false,
-            schema: StructuredJSONSchema()
-        )
+        static func jsonSchema(for responseSchema: AIResponseSchema) -> Format {
+            Format(
+                type: "json_schema",
+                name: "interview_flashcard_response",
+                strict: false,
+                schema: StructuredJSONSchema(responseSchema)
+            )
+        }
     }
 
-    /// OpenCode Go exposes the OpenAI Responses API and supports Structured
-    /// Outputs.  The schema is intentionally envelope-level here: individual
-    /// response models still perform the strict domain validation after
-    /// decoding, while the provider guarantees that the transport payload is
-    /// JSON instead of prose or Markdown.
+    /// OpenAI Responses supports Structured Outputs. Individual response
+    /// models still perform domain validation after decoding, while this
+    /// request guarantees that the transport payload is JSON.
     struct ReasoningOptions: Encodable {
         let effort: String
     }
@@ -388,14 +406,16 @@ private struct OpenAICompatibleRequest: Encodable {
         let type: String
         let jsonSchema: JSONSchema?
 
-        static let jsonSchema = ResponseFormat(
-            type: "json_schema",
-            jsonSchema: JSONSchema(
-                name: "interview_flashcard_response",
-                strict: false,
-                schema: StructuredJSONSchema()
+        static func jsonSchema(for responseSchema: AIResponseSchema) -> ResponseFormat {
+            ResponseFormat(
+                type: "json_schema",
+                jsonSchema: JSONSchema(
+                    name: "interview_flashcard_response",
+                    strict: false,
+                    schema: StructuredJSONSchema(responseSchema)
+                )
             )
-        )
+        }
 
         enum CodingKeys: String, CodingKey {
             case type
@@ -415,8 +435,190 @@ private struct OpenAICompatibleRequest: Encodable {
 }
 
 private struct StructuredJSONSchema: Encodable {
-    let type = "object"
-    let additionalProperties = true
+    private let node: JSONSchemaNode
+
+    init(_ responseSchema: AIResponseSchema = .generic) {
+        switch responseSchema {
+        case .generic:
+            node = .object(properties: [:], required: [], additionalProperties: true)
+        default:
+            node = .schema(for: responseSchema)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try node.encode(to: encoder)
+    }
+}
+
+private indirect enum JSONSchemaNode: Encodable, Sendable {
+    case object(
+        properties: [String: JSONSchemaNode],
+        required: [String],
+        additionalProperties: Bool
+    )
+    case array(items: JSONSchemaNode)
+    case string
+    case integer
+    case number
+    case any
+
+    static func schema(for responseSchema: AIResponseSchema) -> JSONSchemaNode {
+        switch responseSchema {
+        case .decompose:
+            return requiredObject(["candidates", "completionStatus"], arrays: ["candidates"])
+        case .referenceAnswer:
+            return requiredObject(["answerText", "keyPoints", "modelID", "promptVersion", "completionStatus"], arrays: ["keyPoints"])
+        case .refine:
+            return requiredObject(["cards", "completionStatus"], arrays: ["cards"])
+        case .reclassify:
+            return requiredObject(["assignments", "completionStatus"], arrays: ["assignments"])
+        case .polish:
+            return requiredObject(
+                ["polishedText", "edits", "suspectedTranscriptionIssues", "introducedClaims", "needsUserReview", "warnings", "modelID", "promptVersion", "completionStatus"],
+                arrays: ["edits", "suspectedTranscriptionIssues", "introducedClaims", "warnings"]
+            )
+        case .evaluateScore:
+            return requiredObject(
+                ["scorable", "notScorableReason", "dimensions", "confidence", "scoreRange", "warnings", "modelID", "promptVersion", "rubricVersion", "completionStatus"],
+                arrays: ["dimensions", "warnings"],
+                objects: ["scoreRange"]
+            )
+        case .evaluate:
+            return evaluationObject(includeScorable: true)
+        case .evaluationFeedback:
+            return evaluationObject(includeScorable: false)
+        case .generic:
+            return .object(properties: [:], required: [], additionalProperties: true)
+        }
+    }
+
+    private static func requiredObject(
+        _ keys: [String],
+        arrays: Set<String> = [],
+        objects: Set<String> = []
+    ) -> JSONSchemaNode {
+        let properties = Dictionary(uniqueKeysWithValues: keys.map { key in
+            (key, arrays.contains(key) ? JSONSchemaNode.array(items: .any) : objects.contains(key) ? .object(properties: [:], required: [], additionalProperties: true) : .any)
+        })
+        return .object(properties: properties, required: keys, additionalProperties: true)
+    }
+
+    private static func evaluationObject(includeScorable: Bool) -> JSONSchemaNode {
+        var properties: [String: JSONSchemaNode] = [
+            "dimensions": .array(items: .any),
+            "factualErrors": .array(items: .any),
+            "strengths": .array(items: .string),
+            "gapsAndErrors": .array(items: .string),
+            "improvements": .array(items: .string),
+            "polishOnlyClaims": .array(items: .string),
+            "confidence": .number,
+            "scoreRange": .object(
+                properties: ["low": .integer, "high": .integer],
+                required: ["low", "high"],
+                additionalProperties: true
+            ),
+            "warnings": .array(items: .string),
+            "modelID": .string,
+            "promptVersion": .string,
+            "rubricVersion": .string,
+            "completionStatus": .string,
+        ]
+        var required = [
+            "dimensions", "factualErrors", "strengths", "gapsAndErrors",
+            "improvements", "polishOnlyClaims", "confidence", "scoreRange",
+            "warnings", "modelID", "promptVersion", "rubricVersion",
+            "completionStatus",
+        ]
+        if includeScorable {
+            properties["scorable"] = .any
+            properties["notScorableReason"] = .any
+            required.insert("scorable", at: 0)
+            required.insert("notScorableReason", at: 1)
+        }
+        return .object(properties: properties, required: required, additionalProperties: true)
+    }
+
+    static let evaluationFeedback: JSONSchemaNode = .object(
+        properties: [
+            "dimensions": .array(items: .object(
+                properties: [
+                    "key": .string,
+                    "evidence": .array(items: .object(
+                        properties: ["quote": .string, "explanation": .string],
+                        required: ["quote", "explanation"],
+                        additionalProperties: true
+                    )),
+                    "missedPoints": .array(items: .string),
+                    "feedback": .string,
+                ],
+                required: ["key", "evidence", "missedPoints", "feedback"],
+                additionalProperties: true
+            )),
+            "factualErrors": .array(items: .object(
+                properties: [
+                    "statement": .string,
+                    "explanation": .string,
+                    "referenceBasis": .string,
+                ],
+                required: ["statement", "explanation", "referenceBasis"],
+                additionalProperties: true
+            )),
+            "strengths": .array(items: .string),
+            "gapsAndErrors": .array(items: .string),
+            "improvements": .array(items: .string),
+            "polishOnlyClaims": .array(items: .string),
+            "confidence": .number,
+            "scoreRange": .object(
+                properties: ["low": .integer, "high": .integer],
+                required: ["low", "high"],
+                additionalProperties: true
+            ),
+            "warnings": .array(items: .string),
+            "modelID": .string,
+            "promptVersion": .string,
+            "rubricVersion": .string,
+            "completionStatus": .string,
+        ],
+        required: [
+            "dimensions", "factualErrors", "strengths", "gapsAndErrors",
+            "improvements", "polishOnlyClaims", "confidence", "scoreRange",
+            "warnings", "modelID", "promptVersion", "rubricVersion",
+            "completionStatus",
+        ],
+        additionalProperties: true
+    )
+
+    func encode(to encoder: Encoder) throws {
+        if case .any = self {
+            var anyContainer = encoder.singleValueContainer()
+            try anyContainer.encode([String: String]())
+            return
+        }
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .object(properties, required, additionalProperties):
+            try container.encode("object", forKey: .type)
+            try container.encode(properties, forKey: .properties)
+            try container.encode(required, forKey: .required)
+            try container.encode(additionalProperties, forKey: .additionalProperties)
+        case let .array(items):
+            try container.encode("array", forKey: .type)
+            try container.encode(items, forKey: .items)
+        case .string:
+            try container.encode("string", forKey: .type)
+        case .integer:
+            try container.encode("integer", forKey: .type)
+        case .number:
+            try container.encode("number", forKey: .type)
+        case .any:
+            break
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, properties, required, additionalProperties, items
+    }
 }
 
 private struct OpenAICompatibleEnvelope: Decodable {

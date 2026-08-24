@@ -144,6 +144,41 @@ final class AnswerProcessingServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testJSONImportedAnswerIsUsedWithoutRequestingAnotherReferenceAnswer() async throws {
+        let context = try TestModelContainer.make().mainContext
+        try AppModelContainer.bootstrapOthers(context: context, now: Fixtures.now)
+        let draft = JSONQuestionImportDraft(
+            fileName: "scoring.json",
+            contentHash: "scoring-json",
+            items: [
+                .init(
+                    sourceIndex: 0,
+                    question: "Redis 的过期键如何删除？",
+                    topicName: "Redis",
+                    answer: "Redis 同时使用惰性删除和定期删除。"
+                ),
+            ]
+        )
+        _ = try JSONQuestionImportService(now: { Fixtures.now })
+            .confirm(draft: draft, context: context)
+        let card = try XCTUnwrap(try context.fetch(FetchDescriptor<QuestionCardRecord>()).first)
+        let attempt = try AnswerSubmissionService(now: { Fixtures.now }).submitText(
+            questionID: card.id,
+            rawText: "惰性删除配合后台定期抽样清理。",
+            context: context
+        )
+        let client = RecordingAIClient()
+
+        _ = try await AnswerProcessingService(aiClient: client, now: { Fixtures.now })
+            .processStaged(attemptID: attempt.id, context: context)
+
+        XCTAssertEqual(attempt.referenceAnswerTextSnapshot, "Redis 同时使用惰性删除和定期删除。")
+        XCTAssertEqual(attempt.referenceAnswerVersion, 1)
+        let referenceAnswerCallCount = await client.referenceAnswerCallCount()
+        XCTAssertEqual(referenceAnswerCallCount, 0)
+    }
+
+    @MainActor
     func testStagedProcessingPersistsScoreBeforeFeedbackAndReferenceAnswer() async throws {
         let context = try TestModelContainer.make().mainContext
         let card = try Fixtures.makeCard(context: context, includeReferenceAnswer: false)

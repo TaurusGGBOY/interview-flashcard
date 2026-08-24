@@ -10,6 +10,7 @@ public final class AppRuntime {
 
     public let modelContainer: ModelContainer
     public let environment: AppEnvironment
+    public let externalDocumentImportInbox: ExternalDocumentImportInbox
 
     private var importCoordinator: ImportCoordinator?
     private var answerProcessing: AnswerProcessingService?
@@ -53,6 +54,7 @@ public final class AppRuntime {
                 practiceSettingsStore: practiceSettingsStore
             )
         )
+        externalDocumentImportInbox = ExternalDocumentImportInbox()
     }
 
     public func bootstrap() {
@@ -67,6 +69,7 @@ public final class AppRuntime {
             Task { @MainActor in
                 await LaunchRecoveryCoordinator(importer: importer, processing: processing).resume(context: context)
 #if DEBUG
+                await self.startJSONInboxImportIfRequested()
                 await self.startAcceptanceImportIfRequested()
 #endif
             }
@@ -123,6 +126,7 @@ public final class AppRuntime {
         if let fixture = environment.launchOptions.seedFixture {
             try AcceptanceSeeder.seed(named: fixture, context: context)
         }
+        try writeAcceptanceJSONFixtureIfRequested()
         #endif
         try DiagnosticStateExporter(
             isEnabled: environment.launchOptions.diagnosticsEnabled
@@ -148,6 +152,85 @@ public final class AppRuntime {
     }
 
 #if DEBUG
+    private func startJSONInboxImportIfRequested() async {
+        guard environment.launchOptions.jsonInboxImportRequested else { return }
+
+        do {
+            let documentsURL = try FileManager.default.url(
+                for: .documentDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+            guard let enumerator = FileManager.default.enumerator(
+                at: documentsURL,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            let urls = enumerator.compactMap { $0 as? URL }
+                .filter { $0.pathExtension.lowercased() == "json" }
+                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            guard !urls.isEmpty else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+
+            let drafts = try urls.map { url in
+                try JSONQuestionImportParser.parse(
+                    data: Data(contentsOf: url, options: .mappedIfSafe),
+                    fileName: url.lastPathComponent
+                )
+            }
+            _ = try JSONQuestionImportService(
+                now: environment.dependencies.now,
+                diagnosticExporter: DiagnosticStateExporter(
+                    isEnabled: environment.launchOptions.diagnosticsEnabled
+                )
+            ).confirm(drafts: drafts, context: modelContainer.mainContext)
+        } catch {
+            assertionFailure("JSON inbox import failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func writeAcceptanceJSONFixtureIfRequested() throws {
+        guard let requestedName = environment.launchOptions.acceptanceJSONFixtureFile else {
+            return
+        }
+        let fileName = URL(fileURLWithPath: requestedName).lastPathComponent
+        guard fileName == requestedName, fileName.lowercased().hasSuffix(".json") else {
+            return
+        }
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true)
+        let fixture = """
+        {
+          "formatVersion": 1,
+          "questions": [
+            {
+              "question": "JSON 验收题目：已有 Topic",
+              "topic": "后端",
+              "answer": "第一行满分答案。\\n第二行用于验证多行内容。"
+            },
+            {
+              "question": "JSON 验收题目：重复题",
+              "topic": "JSON 新主题",
+              "answer": "重复题的第一份满分答案。"
+            },
+            {
+              "question": "JSON 验收题目：重复题",
+              "topic": "json新主题",
+              "answer": "重复题的第二份满分答案。"
+            }
+          ]
+        }
+        """
+        try Data(fixture.utf8).write(
+            to: documentsURL.appendingPathComponent(fileName),
+            options: .atomic
+        )
+    }
+
     private func startAcceptanceImportIfRequested() async {
         guard !didStartAcceptanceImport,
               let importer = importCoordinator else {

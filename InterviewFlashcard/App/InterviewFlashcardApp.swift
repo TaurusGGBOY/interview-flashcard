@@ -26,6 +26,15 @@ final class InterviewFlashcardAppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    func application(
+        _ application: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        runtime.externalDocumentImportInbox.receive(url)
+        return true
+    }
+
     func applicationDidBecomeActive(_ application: UIApplication) {
         updateDeveloperKeepAwake()
     }
@@ -144,8 +153,11 @@ struct InterviewFlashcardApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            RootTabView(externalDocumentImportInbox: appDelegate.runtime.externalDocumentImportInbox)
                 .environment(appDelegate.runtime.environment)
+                .onOpenURL { url in
+                    appDelegate.runtime.externalDocumentImportInbox.receive(url)
+                }
                 .task {
                     requestPortraitOrientation()
                     guard !didBootstrap else { return }

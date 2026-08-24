@@ -77,6 +77,7 @@ enum EvaluationStatus: String, Codable, CaseIterable, Sendable {
 enum ReferenceAnswerOrigin: String, Codable, CaseIterable, Sendable {
     case aiGenerated
     case userEdited
+    case jsonImported
 }
 
 enum ReclassificationRunStatus: String, Codable, CaseIterable, Sendable {

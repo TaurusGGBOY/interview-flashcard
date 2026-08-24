@@ -197,6 +197,7 @@ struct ConfiguredAIClient: AIClient {
             systemPrompt: systemPrompt ?? PromptCatalog.systemPrompt(for: operation),
             userMessage: payloadJSON,
             mode: .structuredJSON,
+            responseSchema: responseSchema(for: operation),
             timeout: timeout,
             maxOutputTokens: maxOutputTokens(for: operation),
             thinking: thinkingMode(for: operation)
@@ -301,6 +302,19 @@ struct ConfiguredAIClient: AIClient {
             2_048
         default:
             nil
+        }
+    }
+
+    private func responseSchema(for operation: AIOperation) -> AIResponseSchema {
+        switch operation {
+        case .decompose: .decompose
+        case .referenceAnswer: .referenceAnswer
+        case .refine: .refine
+        case .reclassify: .reclassify
+        case .polish: .polish
+        case .evaluateScore: .evaluateScore
+        case .evaluateFeedback: .evaluationFeedback
+        case .evaluate: .evaluate
         }
     }
 

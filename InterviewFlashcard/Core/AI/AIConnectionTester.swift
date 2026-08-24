@@ -30,6 +30,7 @@ struct AIConnectionTester: AIConnectionTesting {
             systemPrompt: "请简短回复。",
             userMessage: "你好",
             mode: .plainText,
+            responseSchema: .generic,
             timeout: timeout,
             maxOutputTokens: nil,
             thinking: nil

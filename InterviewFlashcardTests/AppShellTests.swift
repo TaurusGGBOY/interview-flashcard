@@ -6,6 +6,22 @@ final class AppShellTests: XCTestCase {
         XCTAssertEqual(Set(AppRoute.rootTabs.map(\.accessibilityID)).count, 5)
     }
 
+    func testJSONImportAccessibilityIdentifiersAreStableAndDistinct() {
+        let identifiers = [
+            ImportAccessibilityID.importButton,
+            ImportAccessibilityID.jsonImportButton,
+            ImportAccessibilityID.jsonInboxImportButton,
+            ImportAccessibilityID.jsonWorkingIndicator,
+            ImportAccessibilityID.jsonPreviewScreen,
+            ImportAccessibilityID.jsonConfirmButton,
+            ImportAccessibilityID.jsonValidationScreen,
+        ]
+
+        XCTAssertEqual(ImportAccessibilityID.importButton, "import.markdown.button")
+        XCTAssertEqual(ImportAccessibilityID.jsonImportButton, "import.json.button")
+        XCTAssertEqual(Set(identifiers).count, identifiers.count)
+    }
+
     func testColdLaunchStartsWithAnUnpracticedFeedAndCanRouteGlobalEmptyToLibrary() {
         let firstTopicID = UUID(uuidString: "73000000-0000-0000-0000-000000000001")!
         let state = PracticeView.initialFeedState(topicIDs: [firstTopicID])
@@ -58,6 +74,8 @@ final class AppShellTests: XCTestCase {
             "-IFStubMode", "transient-failure",
             "-IFSeedFixture", "empty",
             "-IFRandomSeed", "42",
+            "-IFAcceptanceJSONFixtureFile", "acceptance-json-import.json",
+            "-IFJSONInboxImport", "YES",
             "-IFAcceptanceConfirmRunID", "76000000-0000-0000-0000-000000000001",
             "-IFKeepAwake", "YES",
         ])
@@ -68,6 +86,8 @@ final class AppShellTests: XCTestCase {
         XCTAssertEqual(options.stubMode, "transient-failure")
         XCTAssertEqual(options.seedFixture, "empty")
         XCTAssertEqual(options.randomSeed, 42)
+        XCTAssertEqual(options.acceptanceJSONFixtureFile, "acceptance-json-import.json")
+        XCTAssertTrue(options.jsonInboxImportRequested)
         XCTAssertEqual(
             options.acceptanceConfirmRunID,
             UUID(uuidString: "76000000-0000-0000-0000-000000000001")
@@ -170,11 +190,16 @@ final class AppShellTests: XCTestCase {
             AIConfigurationEnvironmentKey.deepSeekProvider: "openai",
             AIConfigurationEnvironmentKey.deepSeekAPIKey: "opencode-key",
         ]
+        let injectedConfiguration = AIProviderConfiguration(
+            provider: .openAI,
+            baseURL: "https://opencode.ai/zen/go",
+            model: "deepseek-v4-flash"
+        )
 
-        #if DEBUG
+#if DEBUG
         XCTAssertTrue(environment.persistInjectedAIConfigurationIfPresent(environment: openCodeEnvironment))
-        XCTAssertEqual(environment.aiConfiguration, .openCodeGo)
-        XCTAssertEqual(configurationStore.load(), .openCodeGo)
+        XCTAssertEqual(environment.aiConfiguration, injectedConfiguration)
+        XCTAssertEqual(configurationStore.load(), injectedConfiguration)
         XCTAssertEqual(try keyStore.load(), "opencode-key")
         #else
         XCTAssertFalse(environment.persistInjectedAIConfigurationIfPresent(environment: openCodeEnvironment))

@@ -6,9 +6,12 @@ public struct RootTabView: View {
 
     @State private var selection: AppRoute
     @State private var practiceLaunchRequest: PracticeLaunchRequest?
+    @State private var activeExternalImportRequest: ExternalDocumentImportRequest?
+    private let externalDocumentImportInbox: ExternalDocumentImportInbox
 
-    public init() {
+    public init(externalDocumentImportInbox: ExternalDocumentImportInbox = ExternalDocumentImportInbox()) {
         _selection = State(initialValue: Self.defaultSelection)
+        self.externalDocumentImportInbox = externalDocumentImportInbox
     }
 
     public var body: some View {
@@ -39,6 +42,23 @@ public struct RootTabView: View {
             }
         }
         .accessibilityIdentifier(AccessibilityID.appShell)
+        .onChange(of: externalDocumentImportInbox.pendingRequest?.id, initial: true) { _, _ in
+            guard let pending = externalDocumentImportInbox.pendingRequest else { return }
+            if activeExternalImportRequest?.id != pending.id
+                || activeExternalImportRequest?.urls != pending.urls {
+                activeExternalImportRequest = pending
+            }
+        }
+        .sheet(item: $activeExternalImportRequest) { request in
+            NavigationStack {
+                ImportView(
+                    initialURLs: request.urls,
+                    onInitialURLsConsumed: {
+                        externalDocumentImportInbox.consume(requestID: request.id)
+                    }
+                )
+            }
+        }
     }
 }
 

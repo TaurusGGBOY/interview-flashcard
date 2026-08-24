@@ -95,6 +95,43 @@ final class AIProviderAdapterTests: XCTestCase {
         )
     }
 
+    func testEvaluationFeedbackSchemaRequiresAllDetailedFields() throws {
+        let adapter = AIProviderAdapterFactory.make(for: .openAICompatible)
+        let request = try makeRequest(
+            adapter: adapter,
+            provider: .openAICompatible,
+            responseSchema: .evaluationFeedback
+        )
+        let body = try jsonBody(request)
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        let schema = try XCTUnwrap(responseFormat["json_schema"] as? [String: Any])
+        let objectSchema = try XCTUnwrap(schema["schema"] as? [String: Any])
+        let properties = try XCTUnwrap(objectSchema["properties"] as? [String: Any])
+        let required = try XCTUnwrap(objectSchema["required"] as? [String])
+
+        XCTAssertTrue(properties.keys.contains("dimensions"))
+        XCTAssertTrue(properties.keys.contains("scoreRange"))
+        XCTAssertTrue(properties.keys.contains("completionStatus"))
+        XCTAssertEqual(Set(required), Set(properties.keys))
+    }
+
+    func testEveryProductionStructuredSchemaHasRequiredTopLevelFields() throws {
+        for schemaKind in AIResponseSchema.allCases where schemaKind != .generic {
+            let adapter = AIProviderAdapterFactory.make(for: .openAICompatible)
+            let request = try makeRequest(
+                adapter: adapter,
+                provider: .openAICompatible,
+                responseSchema: schemaKind
+            )
+            let body = try jsonBody(request)
+            let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+            let schema = try XCTUnwrap(responseFormat["json_schema"] as? [String: Any])
+            let objectSchema = try XCTUnwrap(schema["schema"] as? [String: Any])
+            let required = try XCTUnwrap(objectSchema["required"] as? [String])
+            XCTAssertFalse(required.isEmpty, "(schemaKind) must require top-level fields")
+        }
+    }
+
     func testDeepSeekCanUseNonThinkingModeForFastScoreStage() throws {
         let adapter = AIProviderAdapterFactory.make(for: .openAICompatible)
         let request = try makeRequest(
@@ -215,6 +252,7 @@ final class AIProviderAdapterTests: XCTestCase {
         adapter: any AIProviderAdapter,
         provider: AIProviderKind,
         mode: AIProviderResponseMode = .structuredJSON,
+        responseSchema: AIResponseSchema = .generic,
         thinking: AIThinkingMode? = nil
     ) throws -> URLRequest {
         try adapter.makeRequest(
@@ -223,6 +261,7 @@ final class AIProviderAdapterTests: XCTestCase {
             systemPrompt: "system-instruction",
             userMessage: "user-message",
             mode: mode,
+            responseSchema: responseSchema,
             timeout: 30,
             maxOutputTokens: nil,
             thinking: thinking

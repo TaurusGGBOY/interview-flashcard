@@ -21,6 +21,8 @@ public final class AppEnvironment {
         var seedFixture: String?
         var randomSeed: UInt64?
         var acceptanceImportFile: String?
+        var acceptanceJSONFixtureFile: String?
+        var jsonInboxImportRequested: Bool
         var acceptanceContinueRunID: UUID?
         var acceptanceConfirmRunID: UUID?
         public var keepAwakeWhileConnected: Bool
@@ -52,6 +54,8 @@ public final class AppEnvironment {
                 seedFixture: valueAfter("-IFSeedFixture"),
                 randomSeed: valueAfter("-IFRandomSeed").flatMap(UInt64.init),
                 acceptanceImportFile: valueAfter("-IFAcceptanceImportFile"),
+                acceptanceJSONFixtureFile: valueAfter("-IFAcceptanceJSONFixtureFile"),
+                jsonInboxImportRequested: valueAfter("-IFJSONInboxImport") == "YES",
                 acceptanceContinueRunID: valueAfter("-IFAcceptanceContinueRunID").flatMap(UUID.init(uuidString:)),
                 acceptanceConfirmRunID: valueAfter("-IFAcceptanceConfirmRunID").flatMap(UUID.init(uuidString:)),
                 keepAwakeWhileConnected: valueAfter("-IFKeepAwake") == "YES"
@@ -64,6 +68,8 @@ public final class AppEnvironment {
                 seedFixture: nil,
                 randomSeed: nil,
                 acceptanceImportFile: nil,
+                acceptanceJSONFixtureFile: nil,
+                jsonInboxImportRequested: false,
                 acceptanceContinueRunID: nil,
                 acceptanceConfirmRunID: nil,
                 keepAwakeWhileConnected: false
