@@ -1,7 +1,7 @@
 # 面试闪卡
 
 <p align="center">
-  <img src="diagnostics/exports/interview-flashcard.gif" alt="面试闪卡题目示例" />
+  <img src="diagnostics/exports/interview-flashcard.gif" alt="面试闪卡题目示例" width="240" height="427" />
 </p>
 
 面试闪卡是一款面向技术面试准备的 iPhone 练习工具。它把零散的面经资料整理成可持续复习的题库，让你按照主题抽题、直接作答，并通过评分记录看到自己的练习进展。
