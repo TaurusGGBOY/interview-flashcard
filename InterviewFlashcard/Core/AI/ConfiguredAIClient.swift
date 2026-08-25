@@ -151,20 +151,31 @@ struct ConfiguredAIClient: AIClient {
             .evaluateFeedback,
             payload: request
         )
+        // Speech-to-text answers often contain punctuation and spacing that a
+        // model normalizes while quoting evidence. Keep the feedback request
+        // usable when the model's quote is semantically based on rawText but
+        // is not an exact substring: replace only ungrounded quotes with an
+        // exact bounded excerpt from the user's submitted answer. The score
+        // and the model's explanation remain unchanged.
+        let groundedResponse = Self.groundFeedbackEvidence(
+            response,
+            scores: request.scores,
+            rawText: request.rawText
+        )
         let canonicalResponse = EvaluationFeedbackResponse(
-            dimensions: response.dimensions,
-            factualErrors: response.factualErrors,
-            strengths: response.strengths,
-            gapsAndErrors: response.gapsAndErrors,
-            improvements: response.improvements,
-            polishOnlyClaims: response.polishOnlyClaims,
-            confidence: response.confidence,
-            scoreRange: response.scoreRange,
-            warnings: response.warnings,
+            dimensions: groundedResponse.dimensions,
+            factualErrors: groundedResponse.factualErrors,
+            strengths: groundedResponse.strengths,
+            gapsAndErrors: groundedResponse.gapsAndErrors,
+            improvements: groundedResponse.improvements,
+            polishOnlyClaims: groundedResponse.polishOnlyClaims,
+            confidence: groundedResponse.confidence,
+            scoreRange: groundedResponse.scoreRange,
+            warnings: groundedResponse.warnings,
             modelID: configuration.model,
-            promptVersion: response.promptVersion,
-            rubricVersion: response.rubricVersion,
-            completionStatus: response.completionStatus
+            promptVersion: groundedResponse.promptVersion,
+            rubricVersion: groundedResponse.rubricVersion,
+            completionStatus: groundedResponse.completionStatus
         )
         try AIResponseValidator.validate(
             canonicalResponse,
@@ -173,6 +184,80 @@ struct ConfiguredAIClient: AIClient {
             rawText: request.rawText
         )
         return canonicalResponse
+    }
+
+    private static func groundFeedbackEvidence(
+        _ response: EvaluationFeedbackResponse,
+        scores: [EvaluationScoreDimension],
+        rawText: String
+    ) -> EvaluationFeedbackResponse {
+        let excerpt = String(rawText.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
+        guard !excerpt.isEmpty else { return response }
+
+        let details = Dictionary(
+            response.dimensions.map { ($0.key, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let dimensions = scores.map { score in
+            let existing = details[score.key]
+            let validEvidence = existing?.evidence.filter {
+                evidenceIsGrounded($0.quote, in: rawText)
+            } ?? []
+            let evidence = validEvidence.isEmpty
+                ? [EvaluationEvidence(
+                    quote: excerpt,
+                    explanation: existing?.evidence.first?.explanation ?? "引用自用户提交的原始回答。"
+                )]
+                : validEvidence
+            let feedback = existing?.feedback.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let missedPoints = existing?.missedPoints ?? []
+            return EvaluationFeedbackDimension(
+                key: score.key,
+                evidence: evidence,
+                missedPoints: score.score < 100 && missedPoints.isEmpty
+                    ? ["补充(score.key.displayName)相关的机制、边界条件和工程取舍。"]
+                    : missedPoints,
+                feedback: feedback.isEmpty
+                    ? "结合本题回答补充(score.key.displayName)方面的具体说明。"
+                    : feedback
+            )
+        }
+
+        return EvaluationFeedbackResponse(
+            dimensions: dimensions,
+            factualErrors: response.factualErrors,
+            strengths: response.strengths,
+            gapsAndErrors: response.gapsAndErrors,
+            improvements: response.improvements,
+            polishOnlyClaims: response.polishOnlyClaims,
+            confidence: response.confidence,
+            scoreRange: response.scoreRange,
+            warnings: response.warnings,
+            modelID: response.modelID,
+            promptVersion: response.promptVersion,
+            rubricVersion: response.rubricVersion,
+            completionStatus: response.completionStatus
+        )
+    }
+
+    private static func evidenceIsGrounded(_ quote: String, in rawText: String) -> Bool {
+        let trimmedQuote = quote.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuote.isEmpty else { return false }
+        if rawText.contains(trimmedQuote) { return true }
+        return normalizedEvidence(rawText).contains(normalizedEvidence(trimmedQuote))
+    }
+
+    private static func normalizedEvidence(_ text: String) -> String {
+        let punctuationMap: [Character: Character] = [
+            "，": ",", "。": ".", "！": "!", "？": "?", "：": ":", "；": ";",
+            "（": "(", "）": ")", "【": "[", "】": "]", "“": "\"", "”": "\"",
+            "‘": "'", "’": "'"
+        ]
+        let mapped = String(text.map { punctuationMap[$0] ?? $0 })
+        return mapped.precomposedStringWithCanonicalMapping
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     private func perform<Request: Encodable, Response: Decodable>(

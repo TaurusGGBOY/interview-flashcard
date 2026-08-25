@@ -59,13 +59,8 @@ struct ImportView: View {
                 .foregroundStyle(.tint)
                 .accessibilityIdentifier(ImportAccessibilityID.jsonTemplateButton)
 
-                Button(action: readJSONInbox) {
-                    Label("导入收件箱 JSON", systemImage: "tray.full")
-                }
-                .disabled(isWorking)
-                .accessibilityIdentifier(ImportAccessibilityID.jsonInboxImportButton)
             } footer: {
-                Text("Markdown 会在后台使用 AI 提取题目；JSON 会直接校验题目、Topic 和满分答案，不调用 AI。Mac 可把 JSON 复制到“面试闪卡”文件目录，再从收件箱一次导入。")
+                Text("Markdown 会在后台使用 AI 提取题目；JSON 会直接校验题目、Topic 和满分答案，不调用 AI。")
             }
 
             if runs.isEmpty {
@@ -411,35 +406,6 @@ struct ImportView: View {
         }.value
     }
 
-    private func readJSONInbox() {
-        do {
-            let documentsURL = try FileManager.default.url(
-                for: .documentDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
-            guard let enumerator = FileManager.default.enumerator(
-                at: documentsURL,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            ) else {
-                errorMessage = "无法读取 JSON 收件箱。"
-                return
-            }
-            let urls = enumerator.compactMap { $0 as? URL }
-                .filter { $0.pathExtension.lowercased() == "json" }
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            guard !urls.isEmpty else {
-                errorMessage = "收件箱中没有 JSON 文件。请先通过 Finder 或“文件”App 放入文件。"
-                return
-            }
-            readJSON(urls: urls)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     private func continueRun(_ id: UUID) {
         isWorking = true
         Task { @MainActor in
@@ -665,7 +631,6 @@ enum ImportAccessibilityID {
     static let jsonTemplateScreen = "import.json.template"
     static let jsonTemplateCode = "import.json.template.code"
     static let jsonTemplateCopyButton = "import.json.template.copy"
-    static let jsonInboxImportButton = "import.json.inbox-button"
     static let jsonWorkingIndicator = "import.json.working"
     static let jsonPreviewScreen = "import.json.preview"
     static let jsonConfirmButton = "import.json.confirm"

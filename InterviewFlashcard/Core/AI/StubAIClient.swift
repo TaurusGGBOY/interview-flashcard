@@ -7,6 +7,7 @@ actor StubAIClient: AIClient {
         case transientOnce = "transient-once"
         case refineAlwaysFail = "refine-always-fail"
         case processingPaused = "processing-paused"
+        case processingDelayed = "processing-delayed"
         case evaluationInvalid = "evaluation-invalid"
         case reclassifyBatchFailure = "reclassify-batch-failure"
 
@@ -164,6 +165,9 @@ actor StubAIClient: AIClient {
         try failIfConfigured(operation: .evaluate)
         if mode == .processingPaused {
             throw AIError.processingPaused
+        }
+        if mode == .processingDelayed {
+            try await Task.sleep(for: .seconds(5))
         }
         let trimmed = request.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {

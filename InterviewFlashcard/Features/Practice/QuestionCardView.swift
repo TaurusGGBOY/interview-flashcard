@@ -75,12 +75,16 @@ struct QuestionCardView: View {
 
             Spacer(minLength: 8)
 
-            Text("面试题")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.foreground.opacity(0.78))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(theme.foreground.opacity(0.14), in: Capsule())
+            HStack(spacing: 6) {
+                Text("面试题")
+                Text(card.questionNumber.map { "No.\($0)" } ?? "No.—")
+                    .accessibilityLabel(card.questionNumber.map { "题号 \($0)" } ?? "暂无题号")
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(theme.foreground.opacity(0.78))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(theme.foreground.opacity(0.14), in: Capsule())
         }
         .frame(minHeight: 44)
     }
@@ -125,6 +129,7 @@ struct QuestionCardView: View {
             topicID: UUID(uuidString: "10000000-0000-0000-0000-000000000001")!,
             topicName: "分布式系统",
             questionText: "请解释如何设计一个支持水平扩展、幂等写入和故障恢复的订单服务，并说明关键取舍。",
+            questionNumber: 42,
             isTrashed: false,
             hasSubmittedAttempt: false
         )

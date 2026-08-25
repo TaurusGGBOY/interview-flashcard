@@ -5,6 +5,9 @@ struct QuestionCardSnapshot: Identifiable, Equatable, Sendable {
     let topicID: UUID
     let topicName: String
     let questionText: String
+    let questionNumber: Int?
+    let createdAt: Date
+    let activatedAt: Date
     let isTrashed: Bool
     let hasSubmittedAttempt: Bool
 
@@ -13,6 +16,9 @@ struct QuestionCardSnapshot: Identifiable, Equatable, Sendable {
         topicID: UUID,
         topicName: String,
         questionText: String,
+        questionNumber: Int? = nil,
+        createdAt: Date = .distantPast,
+        activatedAt: Date = .distantPast,
         isTrashed: Bool,
         hasSubmittedAttempt: Bool
     ) {
@@ -20,6 +26,9 @@ struct QuestionCardSnapshot: Identifiable, Equatable, Sendable {
         self.topicID = topicID
         self.topicName = topicName
         self.questionText = questionText
+        self.questionNumber = questionNumber
+        self.createdAt = createdAt
+        self.activatedAt = activatedAt
         self.isTrashed = isTrashed
         self.hasSubmittedAttempt = hasSubmittedAttempt
     }
@@ -30,6 +39,9 @@ struct QuestionCardSnapshot: Identifiable, Equatable, Sendable {
             topicID: record.topic.id,
             topicName: record.topic.systemKind == .others ? "待分类（Others）" : record.topic.name,
             questionText: record.questionText,
+            questionNumber: record.questionNumber,
+            createdAt: record.createdAt,
+            activatedAt: record.activatedAt,
             isTrashed: record.isTrashed,
             hasSubmittedAttempt: !record.attempts.isEmpty
         )
@@ -62,6 +74,36 @@ struct QuestionDrawService: Sendable {
     func draw(from cards: [QuestionCardSnapshot]) -> QuestionCardSnapshot? {
         var generator = SystemRandomNumberGenerator()
         return draw(from: cards, using: &generator)
+    }
+
+    func orderedCards(
+        from cards: [QuestionCardSnapshot],
+        mode: PracticeOrderMode
+    ) -> [QuestionCardSnapshot] {
+        cards.sorted { lhs, rhs in
+            switch (lhs.questionNumber, rhs.questionNumber) {
+            case let (left?, right?) where left != right:
+                return mode == .descending ? left > right : left < right
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                if lhs.activatedAt != rhs.activatedAt {
+                    return mode == .descending
+                        ? lhs.activatedAt > rhs.activatedAt
+                        : lhs.activatedAt < rhs.activatedAt
+                }
+                if lhs.createdAt != rhs.createdAt {
+                    return mode == .descending
+                        ? lhs.createdAt > rhs.createdAt
+                        : lhs.createdAt < rhs.createdAt
+                }
+                return mode == .descending
+                    ? lhs.id.uuidString > rhs.id.uuidString
+                    : lhs.id.uuidString < rhs.id.uuidString
+            }
+        }
     }
 }
 

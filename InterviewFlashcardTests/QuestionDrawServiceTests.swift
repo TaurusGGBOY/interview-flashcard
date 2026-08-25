@@ -100,9 +100,28 @@ final class QuestionDrawServiceTests: XCTestCase {
         XCTAssertEqual(firstSequence.count, 8)
     }
 
+    func testOrderedModesSortAllSelectedTopicsByQuestionNumber() {
+        let cards = [
+            snapshot(ordinal: 1, topicID: iosID, questionNumber: 20),
+            snapshot(ordinal: 2, topicID: backendID, questionNumber: 3),
+            snapshot(ordinal: 3, topicID: iosID, questionNumber: 11),
+        ]
+        let service = QuestionDrawService()
+
+        XCTAssertEqual(
+            service.orderedCards(from: cards, mode: .ascending).map(\.questionNumber),
+            [3, 11, 20]
+        )
+        XCTAssertEqual(
+            service.orderedCards(from: cards, mode: .descending).map(\.questionNumber),
+            [20, 11, 3]
+        )
+    }
+
     private func snapshot(
         ordinal: Int,
         topicID: UUID,
+        questionNumber: Int? = nil,
         practiced: Bool = false,
         trashed: Bool = false
     ) -> QuestionCardSnapshot {
@@ -111,6 +130,7 @@ final class QuestionDrawServiceTests: XCTestCase {
             topicID: topicID,
             topicName: topicID == backendID ? "后端" : "iOS",
             questionText: "题目 \(ordinal)",
+            questionNumber: questionNumber,
             isTrashed: trashed,
             hasSubmittedAttempt: practiced
         )

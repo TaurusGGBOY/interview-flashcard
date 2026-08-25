@@ -26,8 +26,8 @@ enum AIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openAICompatible:
             AIProviderConfiguration(
                 provider: self,
-                // OpenCode Go's MiMo/Go models use the OpenAI-compatible Chat
-                // Completions endpoint.
+                // OpenCode Go's DeepSeek V4 Flash model uses the
+                // OpenAI-compatible Chat Completions endpoint.
                 baseURL: "https://opencode.ai/zen/go",
                 model: "deepseek-v4-flash"
             )
@@ -70,12 +70,12 @@ struct AIProviderConfiguration: Codable, Equatable, Sendable {
 }
 
 extension AIProviderConfiguration {
-    /// OpenCode Go's MiMo V2.5 endpoint speaks OpenAI-compatible Chat
+    /// OpenCode Go's DeepSeek V4 Flash endpoint speaks OpenAI-compatible Chat
     /// Completions. This is the default provider for new installs.
     static let openCodeGo = AIProviderConfiguration(
         provider: .openAICompatible,
         baseURL: "https://opencode.ai/zen/go",
-        model: "mimo-v2.5"
+        model: "deepseek-v4-flash"
     )
 }
 

@@ -22,7 +22,6 @@ public final class AppEnvironment {
         var randomSeed: UInt64?
         var acceptanceImportFile: String?
         var acceptanceJSONFixtureFile: String?
-        var jsonInboxImportRequested: Bool
         var acceptanceContinueRunID: UUID?
         var acceptanceConfirmRunID: UUID?
         public var keepAwakeWhileConnected: Bool
@@ -55,7 +54,6 @@ public final class AppEnvironment {
                 randomSeed: valueAfter("-IFRandomSeed").flatMap(UInt64.init),
                 acceptanceImportFile: valueAfter("-IFAcceptanceImportFile"),
                 acceptanceJSONFixtureFile: valueAfter("-IFAcceptanceJSONFixtureFile"),
-                jsonInboxImportRequested: valueAfter("-IFJSONInboxImport") == "YES",
                 acceptanceContinueRunID: valueAfter("-IFAcceptanceContinueRunID").flatMap(UUID.init(uuidString:)),
                 acceptanceConfirmRunID: valueAfter("-IFAcceptanceConfirmRunID").flatMap(UUID.init(uuidString:)),
                 keepAwakeWhileConnected: valueAfter("-IFKeepAwake") == "YES"
@@ -69,7 +67,6 @@ public final class AppEnvironment {
                 randomSeed: nil,
                 acceptanceImportFile: nil,
                 acceptanceJSONFixtureFile: nil,
-                jsonInboxImportRequested: false,
                 acceptanceContinueRunID: nil,
                 acceptanceConfirmRunID: nil,
                 keepAwakeWhileConnected: false
@@ -235,22 +232,69 @@ public final class AppEnvironment {
     func reconcilePracticeSettings(
         validTopicIDs: Set<UUID>
     ) -> PracticeSettingsSnapshot {
+        let previous = practiceSettings
         practiceSettings = dependencies.practiceSettingsStore.reconcile(
             validTopicIDs: validTopicIDs
         )
+        if previous.explicitTopicIDs != practiceSettings.explicitTopicIDs {
+            clearPracticeProgress()
+        }
         return practiceSettings
     }
 
     func setPracticeTopicIDs(_ topicIDs: Set<UUID>) {
         var updated = practiceSettings
+        guard updated.explicitTopicIDs != topicIDs else { return }
         updated.explicitTopicIDs = topicIDs
+        updated.progressSequenceKey = nil
+        updated.progressQuestionID = nil
         dependencies.practiceSettingsStore.save(updated)
         practiceSettings = updated
     }
 
     func setIncludePracticed(_ includePracticed: Bool) {
         var updated = practiceSettings
+        guard updated.includePracticed != includePracticed else { return }
         updated.includePracticed = includePracticed
+        updated.progressSequenceKey = nil
+        updated.progressQuestionID = nil
+        dependencies.practiceSettingsStore.save(updated)
+        practiceSettings = updated
+    }
+
+    func setPracticeOrderMode(_ orderMode: PracticeOrderMode) {
+        var updated = practiceSettings
+        guard updated.orderMode != orderMode else { return }
+        updated.orderMode = orderMode
+        updated.progressSequenceKey = nil
+        updated.progressQuestionID = nil
+        dependencies.practiceSettingsStore.save(updated)
+        practiceSettings = updated
+    }
+
+    func clearPracticeProgress() {
+        guard practiceSettings.progressSequenceKey != nil || practiceSettings.progressQuestionID != nil else {
+            return
+        }
+        var updated = practiceSettings
+        updated.progressSequenceKey = nil
+        updated.progressQuestionID = nil
+        dependencies.practiceSettingsStore.save(updated)
+        practiceSettings = updated
+    }
+
+    func savePracticeProgress(sequenceKey: String, questionID: UUID) {
+        var updated = practiceSettings
+        updated.progressSequenceKey = sequenceKey
+        updated.progressQuestionID = questionID
+        dependencies.practiceSettingsStore.save(updated)
+        practiceSettings = updated
+    }
+
+    func restorePracticeProgress(sequenceKey: String, questionID: UUID?) {
+        var updated = practiceSettings
+        updated.progressSequenceKey = questionID == nil ? nil : sequenceKey
+        updated.progressQuestionID = questionID
         dependencies.practiceSettingsStore.save(updated)
         practiceSettings = updated
     }

@@ -94,6 +94,8 @@ enum PromptCatalog {
             \nReturn exactly one assignment for every supplied card. Change only its topic and choose only from the exact Topic whitelist below. If a card clearly belongs to an existing Topic, use that Topic's exact name. If no existing Topic is a confident match, use the exact system Topic name “Others”. Do not rewrite card content and do not create topics.
 
             \(topicInstructions(availableTopicNames))
+
+            The JSON object MUST use exactly these top-level keys and types: assignments (array) and completionStatus ("complete" or "truncated"). assignments MUST contain exactly one object for every supplied card, in the same order. Each assignment MUST use exactly these keys and types: cardID (the supplied card UUID string) and topicName (one exact string from the Topic whitelist). Do not return question text, answer text, or any extra assignment fields. Set completionStatus to complete only after every supplied card has one assignment.
             """
         case .polish:
             return common + """
@@ -107,7 +109,7 @@ enum PromptCatalog {
 
             Use the supplied question, sourceBackedMaterial, and referenceAnswer when it is non-empty. If referenceAnswer is empty, score against the sourceBackedMaterial and the question rather than refusing to score. Score the user's rawText only; do not repair or add claims. Apply rubric version senior-software-engineer-v2 with weights 35/25/15/10/10/5.
 
-            The JSON object MUST use exactly these top-level keys: scorable, notScorableReason, dimensions, confidence, scoreRange, warnings, modelID, promptVersion, rubricVersion, completionStatus. dimensions MUST contain exactly six objects in this order, each with only key and score: technicalCorrectness, keyPointCoverage, reasoningDepth, structureClarity, applicationTradeoffs, precisionConciseness. Use promptVersion evaluate-score-v1. If scorable is false, dimensions MUST be [] and notScorableReason must explain why. Do not return totalScore; the app computes the weighted total locally.
+            The JSON object MUST use exactly these top-level keys: scorable, notScorableReason, dimensions, confidence, scoreRange, warnings, modelID, promptVersion, rubricVersion, completionStatus. dimensions MUST contain exactly six objects in this order, each with only key and score: technicalCorrectness, keyPointCoverage, reasoningDepth, structureClarity, applicationTradeoffs, precisionConciseness. scoreRange MUST be an object with integer low and integer high fields, both from 0 to 100, with low less than or equal to high. Use promptVersion evaluate-score-v1. If scorable is false, dimensions MUST be [] and notScorableReason must explain why. Do not return totalScore; the app computes the weighted total locally.
             """
         case .evaluateFeedback:
             return common + """

@@ -101,6 +101,26 @@ struct AnswerProcessingService {
         }
     }
 
+    /// Re-run the complete staged evaluation for an existing answer. This is
+    /// intentionally available for successful answers as well as failed ones:
+    /// a user may want a fresh score after changing the rubric or provider.
+    @discardableResult
+    func rescore(attemptID: UUID, context: ModelContext) async throws -> EvaluationRecord {
+        let evaluation = try await score(
+            attemptID: attemptID,
+            context: context,
+            forceRescore: true
+        )
+        guard evaluation.status == .feedback else { return evaluation }
+        try await completeFeedback(
+            attemptID: attemptID,
+            evaluationID: evaluation.id,
+            context: context
+        )
+        _ = try await prepareReferenceAnswer(attemptID: attemptID, context: context)
+        return evaluation
+    }
+
     /// Stage 2: fill in evidence and per-dimension feedback using the already
     /// persisted scores. Scores are never allowed to change in this stage.
     func completeFeedback(

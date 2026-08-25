@@ -3,6 +3,7 @@ import UIKit
 
 struct PracticeSwipeActionLayer<Content: View>: View {
     let cardWidth: CGFloat
+    let cardHeight: CGFloat
     let isInteractionDisabled: Bool
     let skipTitle: String
     let skipSystemImage: String
@@ -21,6 +22,7 @@ struct PracticeSwipeActionLayer<Content: View>: View {
 
     init(
         cardWidth: CGFloat,
+        cardHeight: CGFloat,
         isInteractionDisabled: Bool,
         skipTitle: String = "跳过",
         skipSystemImage: String = "xmark",
@@ -33,6 +35,7 @@ struct PracticeSwipeActionLayer<Content: View>: View {
         @ViewBuilder content: () -> Content
     ) {
         self.cardWidth = cardWidth
+        self.cardHeight = cardHeight
         self.isInteractionDisabled = isInteractionDisabled
         self.skipTitle = skipTitle
         self.skipSystemImage = skipSystemImage
@@ -127,15 +130,10 @@ struct PracticeSwipeActionLayer<Content: View>: View {
               action != .delete || canDelete
         else { return }
 
-        let exitOffset: CGSize
-        switch action {
-        case .skip:
-            exitOffset = CGSize(width: -(cardWidth + 160), height: 0)
-        case .answer:
-            exitOffset = CGSize(width: cardWidth + 160, height: 0)
-        case .delete:
-            exitOffset = CGSize(width: 0, height: -(cardWidth + 160))
-        }
+        let exitOffset = PracticeSwipeInteraction.exitOffset(
+            for: action,
+            cardSize: CGSize(width: cardWidth, height: cardHeight)
+        )
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         withAnimation(

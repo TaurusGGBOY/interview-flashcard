@@ -70,7 +70,6 @@ public final class AppRuntime {
             Task { @MainActor in
                 await LaunchRecoveryCoordinator(importer: importer, processing: processing).resume(context: context)
 #if DEBUG
-                await self.startJSONInboxImportIfRequested()
                 await self.startAcceptanceImportIfRequested()
 #endif
             }
@@ -159,47 +158,6 @@ public final class AppRuntime {
     }
 
 #if DEBUG
-    private func startJSONInboxImportIfRequested() async {
-        guard environment.launchOptions.jsonInboxImportRequested else { return }
-
-        do {
-            let documentsURL = try FileManager.default.url(
-                for: .documentDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
-            guard let enumerator = FileManager.default.enumerator(
-                at: documentsURL,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            ) else {
-                throw CocoaError(.fileReadUnknown)
-            }
-            let urls = enumerator.compactMap { $0 as? URL }
-                .filter { $0.pathExtension.lowercased() == "json" }
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            guard !urls.isEmpty else {
-                throw CocoaError(.fileNoSuchFile)
-            }
-
-            let drafts = try urls.map { url in
-                try JSONQuestionImportParser.parse(
-                    data: Data(contentsOf: url, options: .mappedIfSafe),
-                    fileName: url.lastPathComponent
-                )
-            }
-            _ = try JSONQuestionImportService(
-                now: environment.dependencies.now,
-                diagnosticExporter: DiagnosticStateExporter(
-                    isEnabled: environment.launchOptions.diagnosticsEnabled
-                )
-            ).confirm(drafts: drafts, context: modelContainer.mainContext)
-        } catch {
-            assertionFailure("JSON inbox import failed: \(error.localizedDescription)")
-        }
-    }
-
     private func writeAcceptanceJSONFixtureIfRequested() throws {
         guard let requestedName = environment.launchOptions.acceptanceJSONFixtureFile else {
             return

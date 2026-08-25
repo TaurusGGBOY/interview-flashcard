@@ -3,6 +3,7 @@ import Foundation
 enum PracticeAccessibilityID {
     static let screen = "practice.screen"
     static let includePracticed = "practice.include-practiced"
+    static let orderMode = "practice.order-mode"
     static let progress = "practice.progress"
     static let card = "practice.card"
     static let question = "practice.question"

@@ -25,6 +25,18 @@ final class AIResponseValidatorTests: XCTestCase {
         XCTAssertEqual(response.completionStatus, .complete)
     }
 
+    func testScoreResponseDefaultsEmptyScoreRangeObject() throws {
+        let data = Data(#"""
+        {
+          "dimensions": [],
+          "scoreRange": {}
+        }
+        """#.utf8)
+
+        let response = try JSONDecoder().decode(EvaluationScoreResponse.self, from: data)
+        XCTAssertEqual(response.scoreRange, ScoreRange(low: 0, high: 100))
+    }
+
     func testEvaluationRejectsMissingDimensionAndComputesNoModelTotal() throws {
         let response = makeEvaluation(
             dimensions: makeDimensions().filter { $0.key != .precision }

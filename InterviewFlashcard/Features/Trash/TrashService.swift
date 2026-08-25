@@ -43,9 +43,14 @@ struct TrashService {
 
     func moveToTrash(cardID: UUID, context: ModelContext) throws {
         let card = try card(cardID, context: context)
+        try moveToTrash(card: card, context: context)
+    }
+
+    func moveToTrash(card: QuestionCardRecord, context: ModelContext) throws {
         guard card.trashedAt == nil else { throw TrashError.alreadyTrashed }
-        card.trashedAt = now()
-        card.updatedAt = now()
+        let timestamp = now()
+        card.trashedAt = timestamp
+        card.updatedAt = timestamp
         try context.save()
     }
 
@@ -70,6 +75,10 @@ struct TrashService {
 
     func restore(cardID: UUID, context: ModelContext) throws {
         let card = try card(cardID, context: context)
+        try restore(card: card, context: context)
+    }
+
+    func restore(card: QuestionCardRecord, context: ModelContext) throws {
         guard card.trashedAt != nil else { throw TrashError.notTrashed }
         card.trashedAt = nil
         card.updatedAt = now()

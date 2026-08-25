@@ -20,73 +20,12 @@ final class JSONImportUITests: XCTestCase {
 
         let templateButton = app.buttons["import.json.template-button"]
         XCTAssertTrue(templateButton.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["import.json.inbox-button"].exists)
         templateButton.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["import.json.template"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["import.json.template.code"].exists)
         XCTAssertTrue(app.buttons["import.json.template.copy"].exists)
-    }
-
-    func testJSONInboxLaunchOptionImportsWithoutUIInteraction() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-IFAIProvider", "stub",
-            "-IFSeedFixture", "practice-mixed",
-            "-IFDiagnosticsEnabled", "YES",
-            "-IFAcceptanceJSONFixtureFile", "acceptance-json-launch.json",
-            "-IFJSONInboxImport", "YES",
-        ]
-        app.launch()
-
-        let libraryTab = app.tabBars.buttons["题库"]
-        XCTAssertTrue(libraryTab.waitForExistence(timeout: 15))
-        libraryTab.tap()
-
-        let openImport = app.buttons["library.import-markdown"]
-        XCTAssertTrue(openImport.waitForExistence(timeout: 15))
-        openImport.tap()
-
-        XCTAssertTrue(app.staticTexts["JSON · 已导入 3 道题目"].waitForExistence(timeout: 15))
-    }
-
-    func testJSONInboxCanBePreviewedAndImportedWithoutOpeningFilePicker() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-IFAIProvider", "stub",
-            "-IFSeedFixture", "practice-mixed",
-            "-IFAcceptanceJSONFixtureFile", "acceptance-json-inbox.json",
-        ]
-        app.launch()
-
-        let libraryTab = app.tabBars.buttons["题库"]
-        XCTAssertTrue(libraryTab.waitForExistence(timeout: 5))
-        libraryTab.tap()
-
-        let openImport = app.buttons["library.import-markdown"]
-        XCTAssertTrue(openImport.waitForExistence(timeout: 5))
-        openImport.tap()
-
-        let inboxImport = app.buttons["import.json.inbox-button"]
-        XCTAssertTrue(inboxImport.waitForExistence(timeout: 5))
-        inboxImport.tap()
-
-        let preview = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "identifier == %@ OR identifier == %@",
-                "import.json.preview",
-                "import.json.batch-preview"
-            )
-        ).firstMatch
-        XCTAssertTrue(preview.waitForExistence(timeout: 10))
-
-        let batchConfirm = app.buttons["import.json.batch-confirm"]
-        let confirm = batchConfirm.waitForExistence(timeout: 1)
-            ? batchConfirm
-            : app.buttons["import.json.confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        confirm.tap()
-
-        XCTAssertTrue(app.staticTexts["JSON · 已导入 3 道题目"].waitForExistence(timeout: 10))
     }
 
     func testJSONFileCanBePreviewedImportedAndOpened() {

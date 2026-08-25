@@ -80,6 +80,8 @@ struct AttemptDetailView: View {
                 evaluation: latestEvaluation,
                 onContinue: { dismiss() },
                 onClose: { dismiss() },
+                onRescore: rescore,
+                isRescoring: isRescoring,
                 continueTitle: "关闭",
                 continueSystemImage: "xmark"
             )
@@ -167,7 +169,7 @@ struct AttemptDetailView: View {
                     now: environment.dependencies.now,
                     diagnosticExporter: DiagnosticStateExporter(isEnabled: environment.launchOptions.diagnosticsEnabled)
                 )
-                _ = try await service.score(attemptID: attempt.id, context: context, forceRescore: true)
+                _ = try await service.rescore(attemptID: attempt.id, context: context)
                 isRescoring = false
             } catch {
                 errorMessage = error.localizedDescription

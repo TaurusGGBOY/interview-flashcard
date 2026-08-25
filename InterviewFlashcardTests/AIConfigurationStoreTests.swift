@@ -46,7 +46,7 @@ final class AIConfigurationStoreTests: XCTestCase {
         }
     }
 
-    func testVersionThreeOpenCodeGoDeepSeekDefaultMigratesToLuna() {
+    func testVersionThreeOpenCodeGoDeepSeekDefaultMigratesToCurrentDefault() {
         withDefaults(named: #function) { defaults in
             defaults.set("openai", forKey: AIConfigurationSettingsKey.provider)
             defaults.set("https://opencode.ai/zen/go", forKey: AIConfigurationSettingsKey.baseURL)
@@ -56,7 +56,25 @@ final class AIConfigurationStoreTests: XCTestCase {
             let store = UserDefaultsAIConfigurationStore(userDefaults: defaults)
 
             XCTAssertEqual(store.load(), .openCodeGo)
-            XCTAssertEqual(store.load().model, "mimo-v2.5")
+            XCTAssertEqual(store.load().model, "deepseek-v4-flash")
+            XCTAssertEqual(
+                defaults.integer(forKey: AIConfigurationSettingsKey.migrationVersion),
+                AIConfigurationSettingsKey.currentMigrationVersion
+            )
+        }
+    }
+
+    func testVersionFiveOpenCodeGoMiMoDefaultMigratesToDeepSeekV4Flash() {
+        withDefaults(named: #function) { defaults in
+            defaults.set("openai-compatible", forKey: AIConfigurationSettingsKey.provider)
+            defaults.set("https://opencode.ai/zen/go", forKey: AIConfigurationSettingsKey.baseURL)
+            defaults.set("mimo-v2.5", forKey: AIConfigurationSettingsKey.model)
+            defaults.set(5, forKey: AIConfigurationSettingsKey.migrationVersion)
+
+            let store = UserDefaultsAIConfigurationStore(userDefaults: defaults)
+
+            XCTAssertEqual(store.load(), .openCodeGo)
+            XCTAssertEqual(store.load().model, "deepseek-v4-flash")
             XCTAssertEqual(
                 defaults.integer(forKey: AIConfigurationSettingsKey.migrationVersion),
                 AIConfigurationSettingsKey.currentMigrationVersion

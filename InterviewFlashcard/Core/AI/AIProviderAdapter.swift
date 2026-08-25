@@ -472,17 +472,47 @@ private indirect enum JSONSchemaNode: Encodable, Sendable {
         case .refine:
             return requiredObject(["cards", "completionStatus"], arrays: ["cards"])
         case .reclassify:
-            return requiredObject(["assignments", "completionStatus"], arrays: ["assignments"])
+            return .object(
+                properties: [
+                    "assignments": .array(items: .object(
+                        properties: ["cardID": .string, "topicName": .string],
+                        required: ["cardID", "topicName"],
+                        additionalProperties: true
+                    )),
+                    "completionStatus": .string,
+                ],
+                required: ["assignments", "completionStatus"],
+                additionalProperties: true
+            )
         case .polish:
             return requiredObject(
                 ["polishedText", "edits", "suspectedTranscriptionIssues", "introducedClaims", "needsUserReview", "warnings", "modelID", "promptVersion", "completionStatus"],
                 arrays: ["edits", "suspectedTranscriptionIssues", "introducedClaims", "warnings"]
             )
         case .evaluateScore:
-            return requiredObject(
-                ["scorable", "notScorableReason", "dimensions", "confidence", "scoreRange", "warnings", "modelID", "promptVersion", "rubricVersion", "completionStatus"],
-                arrays: ["dimensions", "warnings"],
-                objects: ["scoreRange"]
+            return .object(
+                properties: [
+                    "scorable": .any,
+                    "notScorableReason": .any,
+                    "dimensions": .array(items: .object(
+                        properties: ["key": .string, "score": .integer],
+                        required: ["key", "score"],
+                        additionalProperties: true
+                    )),
+                    "confidence": .number,
+                    "scoreRange": scoreRangeObject,
+                    "warnings": .array(items: .string),
+                    "modelID": .string,
+                    "promptVersion": .string,
+                    "rubricVersion": .string,
+                    "completionStatus": .string,
+                ],
+                required: [
+                    "scorable", "notScorableReason", "dimensions", "confidence",
+                    "scoreRange", "warnings", "modelID", "promptVersion",
+                    "rubricVersion", "completionStatus",
+                ],
+                additionalProperties: true
             )
         case .evaluate:
             return evaluationObject(includeScorable: true)
@@ -513,11 +543,7 @@ private indirect enum JSONSchemaNode: Encodable, Sendable {
             "improvements": .array(items: .string),
             "polishOnlyClaims": .array(items: .string),
             "confidence": .number,
-            "scoreRange": .object(
-                properties: ["low": .integer, "high": .integer],
-                required: ["low", "high"],
-                additionalProperties: true
-            ),
+            "scoreRange": scoreRangeObject,
             "warnings": .array(items: .string),
             "modelID": .string,
             "promptVersion": .string,
@@ -538,6 +564,12 @@ private indirect enum JSONSchemaNode: Encodable, Sendable {
         }
         return .object(properties: properties, required: required, additionalProperties: true)
     }
+
+    private static let scoreRangeObject: JSONSchemaNode = .object(
+        properties: ["low": .integer, "high": .integer],
+        required: ["low", "high"],
+        additionalProperties: true
+    )
 
     static let evaluationFeedback: JSONSchemaNode = .object(
         properties: [

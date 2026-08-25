@@ -14,7 +14,6 @@ final class AppShellTests: XCTestCase {
             ImportAccessibilityID.jsonTemplateScreen,
             ImportAccessibilityID.jsonTemplateCode,
             ImportAccessibilityID.jsonTemplateCopyButton,
-            ImportAccessibilityID.jsonInboxImportButton,
             ImportAccessibilityID.jsonWorkingIndicator,
             ImportAccessibilityID.jsonPreviewScreen,
             ImportAccessibilityID.jsonConfirmButton,
@@ -80,7 +79,6 @@ final class AppShellTests: XCTestCase {
             "-IFSeedFixture", "empty",
             "-IFRandomSeed", "42",
             "-IFAcceptanceJSONFixtureFile", "acceptance-json-import.json",
-            "-IFJSONInboxImport", "YES",
             "-IFAcceptanceConfirmRunID", "76000000-0000-0000-0000-000000000001",
             "-IFKeepAwake", "YES",
         ])
@@ -92,7 +90,6 @@ final class AppShellTests: XCTestCase {
         XCTAssertEqual(options.seedFixture, "empty")
         XCTAssertEqual(options.randomSeed, 42)
         XCTAssertEqual(options.acceptanceJSONFixtureFile, "acceptance-json-import.json")
-        XCTAssertTrue(options.jsonInboxImportRequested)
         XCTAssertEqual(
             options.acceptanceConfirmRunID,
             UUID(uuidString: "76000000-0000-0000-0000-000000000001")

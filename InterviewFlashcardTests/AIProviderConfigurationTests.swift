@@ -36,7 +36,7 @@ final class AIProviderConfigurationTests: XCTestCase {
             AIProviderConfiguration(
                 provider: .openAICompatible,
                 baseURL: "https://opencode.ai/zen/go",
-                model: "mimo-v2.5"
+                model: "deepseek-v4-flash"
             )
         )
     }

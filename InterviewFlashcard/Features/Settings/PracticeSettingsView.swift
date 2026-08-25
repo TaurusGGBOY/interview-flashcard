@@ -1,6 +1,35 @@
 import SwiftData
 import SwiftUI
 
+enum PracticeTopicSelection {
+    static func buttonTitle(
+        selectedTopicIDs: Set<UUID>,
+        validTopicIDs: Set<UUID>
+    ) -> String {
+        allTopicsSelected(
+            selectedTopicIDs: selectedTopicIDs,
+            validTopicIDs: validTopicIDs
+        ) ? "全不选" : "全选"
+    }
+
+    static func toggledSelection(
+        selectedTopicIDs: Set<UUID>,
+        validTopicIDs: Set<UUID>
+    ) -> Set<UUID> {
+        allTopicsSelected(
+            selectedTopicIDs: selectedTopicIDs,
+            validTopicIDs: validTopicIDs
+        ) ? [] : validTopicIDs
+    }
+
+    private static func allTopicsSelected(
+        selectedTopicIDs: Set<UUID>,
+        validTopicIDs: Set<UUID>
+    ) -> Bool {
+        !validTopicIDs.isEmpty && selectedTopicIDs == validTopicIDs
+    }
+}
+
 struct PracticeSettingsView: View {
     var body: some View {
         Form {
@@ -44,8 +73,18 @@ struct PracticeSettingsContent: View {
                 HStack {
                     Text("主题")
                     Spacer()
-                    Button("全选") {
-                        environment.setPracticeTopicIDs(validTopicIDs)
+                    Button(
+                        PracticeTopicSelection.buttonTitle(
+                            selectedTopicIDs: selectedTopicIDs,
+                            validTopicIDs: validTopicIDs
+                        )
+                    ) {
+                        environment.setPracticeTopicIDs(
+                            PracticeTopicSelection.toggledSelection(
+                                selectedTopicIDs: selectedTopicIDs,
+                                validTopicIDs: validTopicIDs
+                            )
+                        )
                     }
                     .textCase(nil)
                     .disabled(validTopicIDs.isEmpty)
@@ -67,6 +106,26 @@ struct PracticeSettingsContent: View {
                 Text("题目范围")
             } footer: {
                 Text("关闭时只抽取尚未练习的题目，更改会立即应用到练习页。")
+            }
+
+            Section {
+                Picker(
+                    "做题顺序",
+                    selection: Binding(
+                        get: { environment.practiceSettings.orderMode },
+                        set: environment.setPracticeOrderMode
+                    )
+                ) {
+                    ForEach(PracticeOrderMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier(PracticeAccessibilityID.orderMode)
+            } header: {
+                Text("做题顺序")
+            } footer: {
+                Text("默认随机；顺序和逆序按所有已选主题的题号统一排列。切换顺序或练习范围后，从头开始。")
             }
 
             Section("说明") {
@@ -102,6 +161,12 @@ struct PracticeSettingsContent: View {
 
     private var validTopicIDs: Set<UUID> {
         Set(topics.map(\.id))
+    }
+
+    private var selectedTopicIDs: Set<UUID> {
+        environment.practiceSettings.resolvedTopicIDs(
+            validTopicIDs: validTopicIDs
+        )
     }
 
     private func topicBinding(for id: UUID) -> Binding<Bool> {

@@ -5,6 +5,7 @@ struct PracticeFeedView: View {
     let card: QuestionCardSnapshot?
     let emptyReason: PracticeFeedEmptyReason?
     let isAnswering: Bool
+    let isInteractionDisabled: Bool
     let undoTitle: String?
     let onSkip: () -> Void
     let onDelete: () -> Void
@@ -36,7 +37,8 @@ struct PracticeFeedView: View {
             GeometryReader { proxy in
                 PracticeSwipeActionLayer(
                     cardWidth: max(proxy.size.width, 1),
-                    isInteractionDisabled: false,
+                    cardHeight: max(proxy.size.height, 1),
+                    isInteractionDisabled: isInteractionDisabled,
                     skipTitle: isAnswering ? "返回题目" : "跳过",
                     skipSystemImage: isAnswering ? "arrow.left" : "xmark",
                     answerTitle: isAnswering ? "查看历史" : "开始回答",
@@ -62,6 +64,7 @@ struct PracticeFeedView: View {
                                     onAttemptSubmitted: onAttemptSubmitted,
                                     onContinueSession: onContinueSession
                                 )
+                                .id(card.id)
                                 .accessibilityIdentifier(PracticeAccessibilityID.cardBack)
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -102,6 +105,7 @@ struct PracticeFeedView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .frame(minHeight: 48)
+                .disabled(isInteractionDisabled)
                 .accessibilityIdentifier(isAnswering ? PracticeAccessibilityID.returnToQuestion : PracticeAccessibilityID.skip)
 
                 Button {
@@ -113,12 +117,14 @@ struct PracticeFeedView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
                 .frame(minHeight: 48)
+                .disabled(isInteractionDisabled)
                 .accessibilityIdentifier(isAnswering ? PracticeAccessibilityID.viewHistory : PracticeAccessibilityID.answer)
             }
 
             if let undoTitle {
                 Button(undoTitle, action: onUndo)
                     .buttonStyle(.borderless)
+                    .disabled(isInteractionDisabled)
                     .accessibilityIdentifier(PracticeAccessibilityID.undo)
             }
         }
@@ -159,6 +165,7 @@ struct PracticeFeedView: View {
             if let undoTitle {
                 Button(undoTitle, action: onUndo)
                     .buttonStyle(.borderless)
+                    .disabled(isInteractionDisabled)
                     .accessibilityIdentifier(PracticeAccessibilityID.undo)
             }
         }

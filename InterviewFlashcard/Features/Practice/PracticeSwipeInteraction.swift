@@ -10,6 +10,7 @@ enum PracticeSwipeAction: Equatable, Sendable {
 struct PracticeSwipeInteraction: Sendable {
     static let distanceThresholdRatio: CGFloat = 0.32
     static let minimumHorizontalIntent: CGFloat = 12
+    static let exitPadding: CGFloat = 160
 
     static func action(
         translation: CGSize,
@@ -58,6 +59,20 @@ struct PracticeSwipeInteraction: Sendable {
             ? abs(currentTranslation.height)
             : abs(currentTranslation.width)
         return previousDistance < threshold && currentDistance >= threshold
+    }
+
+    static func exitOffset(
+        for action: PracticeSwipeAction,
+        cardSize: CGSize
+    ) -> CGSize {
+        switch action {
+        case .skip:
+            CGSize(width: -(cardSize.width + exitPadding), height: 0)
+        case .answer:
+            CGSize(width: cardSize.width + exitPadding, height: 0)
+        case .delete:
+            CGSize(width: 0, height: -(cardSize.height + exitPadding))
+        }
     }
 
     static func nextDrawPool(

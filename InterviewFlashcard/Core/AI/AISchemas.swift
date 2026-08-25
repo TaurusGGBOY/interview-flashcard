@@ -949,12 +949,16 @@ struct ScoreRange: Codable, Equatable, Sendable {
         }
 
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedLow = try container.decodeIfPresent(Int.self, forKey: .low)
-            ?? container.decode(Int.self, forKey: .min)
-        let decodedHigh = try container.decodeIfPresent(Int.self, forKey: .high)
-            ?? container.decode(Int.self, forKey: .max)
-        low = Self.normalize(decodedLow)
-        high = Self.normalize(decodedHigh)
+        // scoreRange is advisory metadata; some compatible gateways emit an
+        // empty object even when the structured schema asks for low/high.
+        // Keep the score usable and let the validator enforce the normalized
+        // bounds instead of failing the whole scoring result at decode time.
+        let decodedLow = (try? container.decode(Int.self, forKey: .low))
+            ?? (try? container.decode(Int.self, forKey: .min))
+        let decodedHigh = (try? container.decode(Int.self, forKey: .high))
+            ?? (try? container.decode(Int.self, forKey: .max))
+        low = Self.normalize(decodedLow ?? 0)
+        high = Self.normalize(decodedHigh ?? 100)
     }
 
     func encode(to encoder: Encoder) throws {

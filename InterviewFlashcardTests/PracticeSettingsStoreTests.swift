@@ -2,6 +2,46 @@ import XCTest
 @testable import InterviewFlashcardCore
 
 final class PracticeSettingsStoreTests: XCTestCase {
+    func testBulkSelectionSelectsAllWhenOnlySomeTopicsAreSelected() {
+        let firstID = UUID()
+        let secondID = UUID()
+        let validTopicIDs: Set<UUID> = [firstID, secondID]
+
+        XCTAssertEqual(
+            PracticeTopicSelection.buttonTitle(
+                selectedTopicIDs: [firstID],
+                validTopicIDs: validTopicIDs
+            ),
+            "全选"
+        )
+        XCTAssertEqual(
+            PracticeTopicSelection.toggledSelection(
+                selectedTopicIDs: [firstID],
+                validTopicIDs: validTopicIDs
+            ),
+            validTopicIDs
+        )
+    }
+
+    func testBulkSelectionClearsAllWhenEveryTopicIsSelected() {
+        let validTopicIDs: Set<UUID> = [UUID(), UUID()]
+
+        XCTAssertEqual(
+            PracticeTopicSelection.buttonTitle(
+                selectedTopicIDs: validTopicIDs,
+                validTopicIDs: validTopicIDs
+            ),
+            "全不选"
+        )
+        XCTAssertEqual(
+            PracticeTopicSelection.toggledSelection(
+                selectedTopicIDs: validTopicIDs,
+                validTopicIDs: validTopicIDs
+            ),
+            []
+        )
+    }
+
     private let firstID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
     private let secondID = UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
     private let newID = UUID(uuidString: "10000000-0000-0000-0000-000000000003")!

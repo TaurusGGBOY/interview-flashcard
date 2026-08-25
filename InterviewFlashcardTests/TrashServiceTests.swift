@@ -52,6 +52,19 @@ final class TrashServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoreKnownCardWithoutLookingItUpAgain() throws {
+        let context = try TestModelContainer.make().mainContext
+        let card = try Fixtures.makeCard(context: context)
+        let service = TrashService(now: { Fixtures.now })
+        try service.moveToTrash(card: card, context: context)
+
+        try service.restore(card: card, context: context)
+
+        XCTAssertNil(card.trashedAt)
+        XCTAssertEqual(card.updatedAt, Fixtures.now)
+    }
+
+    @MainActor
     func testPermanentDeleteRemovesQuestionAndChildrenAfterSave() async throws {
         let context = try TestModelContainer.make().mainContext
         let card = try Fixtures.makeCard(context: context)

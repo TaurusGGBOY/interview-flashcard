@@ -5,6 +5,7 @@ struct EvaluationResultView: View {
     let onContinue: () -> Void
     let onClose: (() -> Void)?
     let onRescore: (() -> Void)?
+    let isRescoring: Bool
     let continueTitle: String
     let continueSystemImage: String
 
@@ -15,6 +16,7 @@ struct EvaluationResultView: View {
         onContinue: @escaping () -> Void,
         onClose: (() -> Void)? = nil,
         onRescore: (() -> Void)? = nil,
+        isRescoring: Bool = false,
         continueTitle: String = "下一题",
         continueSystemImage: String = "arrow.right"
     ) {
@@ -22,6 +24,7 @@ struct EvaluationResultView: View {
         self.onContinue = onContinue
         self.onClose = onClose
         self.onRescore = onRescore
+        self.isRescoring = isRescoring
         self.continueTitle = continueTitle
         self.continueSystemImage = continueSystemImage
     }
@@ -37,8 +40,8 @@ struct EvaluationResultView: View {
                 stageStatus
                 ScoreRadarChart(dimensions: presentation.dimensions)
                 dimensions
-                feedbackSections
                 answerComparison
+                feedbackSections
                 Button {
                     isShowingHistory = true
                 } label: {
@@ -53,11 +56,18 @@ struct EvaluationResultView: View {
                     Button {
                         onRescore()
                     } label: {
-                        Label("重新评分", systemImage: "arrow.clockwise")
+                        Group {
+                            if isRescoring {
+                                Label("正在重新评分…", systemImage: "hourglass")
+                            } else {
+                                Label("重新评分", systemImage: "arrow.clockwise")
+                            }
+                        }
                             .frame(maxWidth: .infinity)
                             .frame(minHeight: 48)
                     }
                     .buttonStyle(.bordered)
+                    .disabled(isRescoring)
                     .accessibilityIdentifier("answer-editor.result.rescore")
                 }
 
@@ -152,6 +162,9 @@ struct EvaluationResultView: View {
                 Text(message)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             if evaluation.status == .feedback || evaluation.attempt.processingStatus == .referenceAnswer {
@@ -181,6 +194,10 @@ struct EvaluationResultView: View {
                     Text(row.feedback)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                 }
                 if index < presentation.dimensions.count - 1 { Divider() }
@@ -281,6 +298,10 @@ private struct FeedbackLabelStyle: LabelStyle {
                 .font(.system(size: 5))
                 .foregroundStyle(.secondary)
             configuration.title
+                .lineLimit(3)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

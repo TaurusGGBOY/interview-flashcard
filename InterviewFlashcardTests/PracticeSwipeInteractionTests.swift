@@ -73,6 +73,28 @@ final class PracticeSwipeInteractionTests: XCTestCase {
         XCTAssertEqual(action, .answer)
     }
 
+    func testDeleteExitOffsetUsesCardHeight() {
+        let offset = PracticeSwipeInteraction.exitOffset(
+            for: .delete,
+            cardSize: CGSize(width: 300, height: 640)
+        )
+
+        XCTAssertEqual(offset, CGSize(width: 0, height: -800))
+    }
+
+    func testHorizontalExitOffsetsContinueUsingCardWidth() {
+        let cardSize = CGSize(width: 300, height: 640)
+
+        XCTAssertEqual(
+            PracticeSwipeInteraction.exitOffset(for: .skip, cardSize: cardSize),
+            CGSize(width: -460, height: 0)
+        )
+        XCTAssertEqual(
+            PracticeSwipeInteraction.exitOffset(for: .answer, cardSize: cardSize),
+            CGSize(width: 460, height: 0)
+        )
+    }
+
     func testNextDrawPoolExcludesCurrentWhenAlternativesExist() {
         let first = snapshot(ordinal: 1)
         let second = snapshot(ordinal: 2)

@@ -115,6 +115,47 @@ final class AIProviderAdapterTests: XCTestCase {
         XCTAssertEqual(Set(required), Set(properties.keys))
     }
 
+    func testEvaluationScoreSchemaRequiresScoreRangeBounds() throws {
+        let adapter = AIProviderAdapterFactory.make(for: .openAICompatible)
+        let request = try makeRequest(
+            adapter: adapter,
+            provider: .openAICompatible,
+            responseSchema: .evaluateScore
+        )
+        let body = try jsonBody(request)
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        let schema = try XCTUnwrap(responseFormat["json_schema"] as? [String: Any])
+        let objectSchema = try XCTUnwrap(schema["schema"] as? [String: Any])
+        let properties = try XCTUnwrap(objectSchema["properties"] as? [String: Any])
+        let scoreRange = try XCTUnwrap(properties["scoreRange"] as? [String: Any])
+        let scoreRangeProperties = try XCTUnwrap(scoreRange["properties"] as? [String: Any])
+        let scoreRangeRequired = try XCTUnwrap(scoreRange["required"] as? [String])
+
+        XCTAssertEqual(Set(scoreRangeProperties.keys), ["low", "high"])
+        XCTAssertEqual(Set(scoreRangeRequired), ["low", "high"])
+    }
+
+    func testReclassifySchemaRequiresAssignmentFields() throws {
+        let adapter = AIProviderAdapterFactory.make(for: .openAICompatible)
+        let request = try makeRequest(
+            adapter: adapter,
+            provider: .openAICompatible,
+            responseSchema: .reclassify
+        )
+        let body = try jsonBody(request)
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        let schema = try XCTUnwrap(responseFormat["json_schema"] as? [String: Any])
+        let objectSchema = try XCTUnwrap(schema["schema"] as? [String: Any])
+        let properties = try XCTUnwrap(objectSchema["properties"] as? [String: Any])
+        let assignments = try XCTUnwrap(properties["assignments"] as? [String: Any])
+        let itemSchema = try XCTUnwrap(assignments["items"] as? [String: Any])
+        let itemProperties = try XCTUnwrap(itemSchema["properties"] as? [String: Any])
+        let itemRequired = try XCTUnwrap(itemSchema["required"] as? [String])
+
+        XCTAssertEqual(Set(itemProperties.keys), ["cardID", "topicName"])
+        XCTAssertEqual(Set(itemRequired), ["cardID", "topicName"])
+    }
+
     func testEveryProductionStructuredSchemaHasRequiredTopLevelFields() throws {
         for schemaKind in AIResponseSchema.allCases where schemaKind != .generic {
             let adapter = AIProviderAdapterFactory.make(for: .openAICompatible)

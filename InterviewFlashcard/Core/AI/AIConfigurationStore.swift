@@ -5,7 +5,7 @@ enum AIConfigurationSettingsKey {
     static let baseURL = "settings.ai.configuration.base-url"
     static let model = "settings.ai.configuration.model"
     static let migrationVersion = "settings.ai.configuration.migration-version"
-    static let currentMigrationVersion = 5
+    static let currentMigrationVersion = 6
 
     /// Kept only to recognize the legacy built-in value during migration.
     /// New configurations must never use api.deepseek.com (it is pay-per-use;
@@ -180,15 +180,27 @@ final class UserDefaultsAIConfigurationStore: AIConfigurationStore, @unchecked S
         }
 
         if storedVersion < 5 {
-            // OpenCode Go documents MiMo V2.5 on the OpenAI-compatible Chat
-            // Completions endpoint. Migrate the previous Responses selection
-            // so the app does not receive an empty Responses `output` array.
+            // Migrate the previous OpenAI Responses selection to the
+            // OpenCode Go Chat Completions endpoint.
             if provider == .openAI,
+               baseURL == "https://opencode.ai/zen/go",
+               model == "deepseek-v4-flash" {
+                persist(.openCodeGo)
+            }
+            userDefaults.set(5, forKey: AIConfigurationSettingsKey.migrationVersion)
+        }
+
+        if storedVersion < 6 {
+            // Version 5 temporarily selected MiMo V2.5 as the built-in
+            // OpenCode Go model. Move only that exact built-in value to the
+            // current DeepSeek V4 Flash default; explicit custom models stay
+            // untouched.
+            if provider == .openAICompatible,
                baseURL == "https://opencode.ai/zen/go",
                model == "mimo-v2.5" {
                 persist(.openCodeGo)
             }
-            userDefaults.set(5, forKey: AIConfigurationSettingsKey.migrationVersion)
+            userDefaults.set(6, forKey: AIConfigurationSettingsKey.migrationVersion)
         }
     }
 

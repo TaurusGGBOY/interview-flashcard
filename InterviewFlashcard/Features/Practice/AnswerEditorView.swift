@@ -39,6 +39,8 @@ struct AnswerEditorView: View {
     @State private var submittedAttemptID: UUID?
     @State private var processingResult: EvaluationRecord?
     @State private var isShowingResult = false
+    @State private var isLeaving = false
+    @State private var isRescoring = false
 
     private struct AttemptProgress: Equatable {
         let attemptID: UUID
@@ -106,7 +108,8 @@ struct AnswerEditorView: View {
                         evaluation: processingResult,
                         onContinue: continueFromResult,
                         onClose: { isShowingResult = false },
-                        onRescore: rescoreCurrentAttempt
+                        onRescore: rescoreCurrentAttempt,
+                        isRescoring: isRescoring
                     )
                 }
                 .presentationDetents([.medium, .large])
@@ -182,7 +185,7 @@ struct AnswerEditorView: View {
 
     @ViewBuilder
     private var pendingNavigation: some View {
-        if submittedAttemptID != nil, !isShowingResult {
+        if submittedAttemptID != nil, !isShowingResult, !isLeaving {
             Button(
                 presentation == .cardBack ? "下一题" : "关闭",
                 systemImage: presentation == .cardBack ? "arrow.right" : "xmark",
@@ -274,6 +277,7 @@ struct AnswerEditorView: View {
     }
 
     private func revealCompletedEvaluationIfNeeded() {
+        guard !isLeaving else { return }
         guard let submittedAttemptID,
               let attempt = attempts.first(where: { $0.id == submittedAttemptID })
         else {
@@ -305,6 +309,8 @@ struct AnswerEditorView: View {
     }
 
     private func continueAfterSubmit() {
+        guard !isLeaving else { return }
+        isLeaving = true
         isShowingResult = false
         processingResult = nil
         if presentation == .cardBack {
@@ -316,6 +322,7 @@ struct AnswerEditorView: View {
 
     private func process(attemptID: UUID, forceRescore: Bool = false) {
         isProcessing = true
+        isRescoring = forceRescore
         errorMessage = nil
         Task { @MainActor in
             do {
@@ -335,6 +342,7 @@ struct AnswerEditorView: View {
                 processingResult = evaluation
                 isShowingResult = true
                 isProcessing = false
+                isRescoring = false
                 guard evaluation.status == .feedback else { return }
                 do {
                     try await service.completeFeedback(
@@ -352,11 +360,13 @@ struct AnswerEditorView: View {
             } catch {
                 errorMessage = error.localizedDescription
                 isProcessing = false
+                isRescoring = false
             }
         }
     }
 
     private func continueFromResult() {
+        isLeaving = true
         isShowingResult = false
         onContinueSession()
         if presentation == .screen {
@@ -366,8 +376,6 @@ struct AnswerEditorView: View {
 
     private func rescoreCurrentAttempt() {
         guard let attemptID = submittedAttemptID, !isProcessing else { return }
-        isShowingResult = false
-        processingResult = nil
         process(attemptID: attemptID, forceRescore: true)
     }
 }
