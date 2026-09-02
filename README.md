@@ -1,64 +1,64 @@
-# 面试闪卡
+# Interview Flashcard
 
 <p align="center">
-  <img src="diagnostics/exports/interview-flashcard.gif" alt="面试闪卡题目示例" width="240" height="427" />
+  <img src="diagnostics/exports/interview-flashcard.gif" alt="Interview Flashcard practice question example" width="240" height="427" />
 </p>
 
-面试闪卡是一款面向技术面试准备的 iPhone 练习工具。它把零散的面经资料整理成可持续复习的题库，让你按照主题抽题、直接作答，并通过评分记录看到自己的练习进展。
+Interview Flashcard is an iPhone practice app for technical interview preparation. It turns scattered interview notes into a personal question bank that supports topic-based drills, direct answers, scored feedback, and progress tracking.
 
-## 你可以用它做什么
+## What you can do
 
-### 像真实面试一样练习
+### Practice like a real interview
 
-- 从题库中按主题抽取题目，开始一轮连续练习。
-- 左滑跳过当前题，右滑进入回答；也可以使用页面上的操作按钮。
-- 支持文字回答，也支持在设备提供本地语音转写能力时用语音回答。
-- 关闭“包含已练习题”后，默认优先练习还没有提交过回答的题目。
+- Draw questions by topic and complete a continuous practice session.
+- Swipe left to skip a question and right to answer it, or use the on-screen controls.
+- Answer in text, or by voice when the device provides local speech transcription.
+- When **Include practiced questions** is off, the app prioritizes questions without a submitted answer.
 
-### 获得有依据的反馈
+### Get evidence-based feedback
 
-- 提交回答后，可以查看整理后的回答、参考答案和 AI 评分。
-- 评分会从多个能力维度给出结果，帮助你区分知识缺口、表达问题和回答结构问题。
-- 每次回答都会保留在历史中，方便回看原始回答、评分结果和后续改进。
-- 题目已有参考答案时，评分直接使用已有答案，不重复生成。
+- After submitting an answer, review the refined answer, reference answer, and AI evaluation.
+- Scores cover multiple dimensions so you can distinguish knowledge gaps, communication issues, and answer structure.
+- Answer history preserves the original response, evaluation, and later improvements.
+- When a question already has a reference answer, it is used for evaluation instead of being generated again.
 
-### 管理自己的题库
+### Manage your own question bank
 
-- 按 Topic 组织题目，支持搜索和查看题目来源。
-- 题库会显示题目是否已经练习过，方便快速找到待复习内容。
-- 删除的题目会进入可恢复的回收站，避免误删后无法找回。
-- 同一份资料可以再次导入，适合资料更新或建立不同版本的练习集。
+- Organize questions by topic, search them, and inspect their source.
+- See whether each question has already been practiced.
+- Restore deleted questions from the trash instead of losing them permanently.
+- Re-import the same source when your material changes or when you want another version of a collection.
 
-### 从面经资料快速建立题库
+### Build a question bank from interview material
 
-- **Markdown 导入**：适合未经整理的面经文本。应用会在后台提取题目、整理表达、归类并生成参考答案，导入过程可以稍后继续。
-- **JSON 导入**：适合已经结构化的题目文件。应用会直接校验题目、Topic 和满分答案，不再调用 AI 拆题或重复生成答案。
-- 可以在“文件”App 中通过“用其他 App 打开”或分享，把 `.md`、`.json` 文件直接交给面试闪卡处理。
-- JSON 导入前会先展示校验结果和题目预览，确认后再一次性写入题库。
+- **Markdown import**: for unstructured interview notes. The app extracts questions, refines wording, categorizes them, and generates reference answers in the background. Import work can continue later.
+- **JSON import**: for structured question files. The app validates questions, topics, and full-score answers without using AI to split or regenerate questions.
+- Open or share `.md` and `.json` files from the Files app to Interview Flashcard.
+- JSON imports show validation results and a question preview before the collection is written to the library.
 
-### 看见自己的练习趋势
+### Track your practice trend
 
-统计页会汇总题库覆盖率、已练习和未练习题目、回答次数、练习天数、分数趋势，以及不同 Topic 的练习情况。历史页则按时间保留每一次回答和评分记录。
+The Insights tab summarizes question-bank coverage, practiced and unpracticed questions, answer count, practice days, score trends, and topic-level progress. The History tab keeps every answer and evaluation in chronological order.
 
-## 推荐使用流程
+## Recommended workflow
 
-1. 把面经 Markdown 或结构化 JSON 文件放到“文件”App。
-2. 选择“用其他 App 打开”或分享至“面试闪卡”。
-3. Markdown 文件进入后台整理；JSON 文件先校验和预览，再确认导入。
-4. 在“题库”中选择 Topic，在“练习”页开始回答。
-5. 根据评分和历史记录，回到薄弱 Topic 反复练习。
+1. Put interview-notes Markdown or structured JSON files in the Files app.
+2. Choose **Open in Another App** or share them with Interview Flashcard.
+3. Let Markdown imports be processed in the background; validate and confirm JSON imports.
+4. Select a topic in the library and start answering in the Practice tab.
+5. Use evaluations and history to revisit weaker topics.
 
-## 适合的使用场景
+## Good use cases
 
-- 面试前集中刷题，快速覆盖多个技术主题。
-- 把小红书、网页或笔记中的面经统一整理成个人题库。
-- 反复练习同一类问题，比较不同回答的质量变化。
-- 用已有满分答案导入一套固定题库，保持评分标准稳定。
+- Intensive technical interview preparation across several topics.
+- Converting interview notes from websites or personal notebooks into one private question bank.
+- Repeating a question category and comparing how answer quality changes over time.
+- Importing a fixed set of questions with reference answers to keep evaluation standards consistent.
 
-## 隐私与数据
+## Privacy and data
 
-题目、导入记录、回答历史和本地录音保存在 App 自己的数据空间中。AI 评分需要在设置中配置可用的 AI 服务；语音回答优先使用设备提供的本地转写能力。
+Questions, import records, answer history, and local recordings stay in the app's own data space. AI evaluation requires a configured AI service. Voice answers use device-provided local transcription whenever it is available.
 
-## 许可证
+## License
 
-本项目采用 [Apache License 2.0](LICENSE) 开源。
+Licensed under the [Apache License 2.0](LICENSE).
